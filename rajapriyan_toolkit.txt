@@ -1,0 +1,628 @@
+import json
+import uuid
+import polars as pl
+from IPython.display import HTML, display
+
+def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filename: str = "polars_jupyter_helper.html"):
+    """
+    Scans the Jupyter session for active Polars DataFrames, compiles metadata 
+    (3 sample non-null values + head preview slice for SAS Viya-style inspection),
+    and launches an isolated interactive UI with Jupyter CSS isolation.
+    """
+    # 1. Inspect Python interactive namespace
+    try:
+        from IPython import get_ipython
+        ip = get_ipython()
+        user_ns = ip.user_ns if ip else globals()
+    except Exception:
+        user_ns = globals()
+
+    dfs_metadata = {}
+
+    for var_name, obj in user_ns.items():
+        if isinstance(obj, pl.DataFrame) and not var_name.startswith('_'):
+            cols_info = []
+            for col in obj.columns:
+                dtype = str(obj[col].dtype)
+                try:
+                    non_nulls = obj[col].drop_nulls()
+                    s1 = str(non_nulls[0]) if len(non_nulls) > 0 else "None"
+                    s2 = str(non_nulls[1]) if len(non_nulls) > 1 else "None"
+                    s3 = str(non_nulls[2]) if len(non_nulls) > 2 else "None"
+                except Exception:
+                    s1, s2, s3 = "None", "None", "None"
+                
+                # Truncate long strings for clean table alignment
+                s1 = (s1[:40] + '...') if len(s1) > 40 else s1
+                s2 = (s2[:40] + '...') if len(s2) > 40 else s2
+                s3 = (s3[:40] + '...') if len(s3) > 40 else s3
+                
+                cols_info.append({
+                    "col": str(col),
+                    "dtype": dtype,
+                    "sample1": s1,
+                    "sample2": s2,
+                    "sample3": s3
+                })
+            
+            # Sliced preview for large datasets (SAS Viya style)
+            preview_slice = obj.head(preview_rows)
+            preview_records = []
+            for row in preview_slice.iter_rows():
+                preview_records.append([str(v) if v is not None else "null" for v in row])
+
+            dfs_metadata[var_name] = {
+                "shape": f"{obj.shape[0]:,} rows × {obj.shape[1]:,} cols",
+                "columns": cols_info,
+                "col_names": [str(c) for c in obj.columns],
+                "col_types": {str(c): str(obj[c].dtype) for c in obj.columns},
+                "preview_data": preview_records
+            }
+
+    metadata_json = json.dumps(dfs_metadata)
+    uid = f"pl_{uuid.uuid4().hex[:8]}"
+
+    # 2. Build isolated HTML with Jupyter CSS Overrides
+    html_content = f"""
+    <style>
+        /* Force Jupyter to not inject white table backgrounds */
+        #{uid}_root table,
+        #{uid}_root thead,
+        #{uid}_root tbody,
+        #{uid}_root tr,
+        #{uid}_root th,
+        #{uid}_root td {{
+            background-color: #0f172a !important;
+            color: #f8fafc !important;
+            border-color: #334155 !important;
+        }}
+        #{uid}_root tr:hover td {{
+            background-color: #1e293b !important;
+        }}
+    </style>
+
+    <div id="{uid}_root" style="background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; border-radius: 12px; border: 1px solid #334155; padding: 18px; margin: 10px 0; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5);">
+        
+        <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #334155; padding-bottom: 14px; margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="background: linear-gradient(135deg, #06b6d4, #2563eb); color: white; font-weight: 800; font-size: 12px; padding: 4px 10px; border-radius: 6px; letter-spacing: 0.5px;">POLARS</span>
+                <span style="font-size: 16px; font-weight: 700; color: #f1f5f9;">Rajapriyan coding toolkit</span>
+            </div>
+            
+            <div style="display: flex; gap: 6px; overflow-x: auto; font-size: 13px;">
+                <button type="button" id="{uid}_btn_inspector" class="{uid}_tab_btn" style="background: transparent; border: none; border-bottom: 3px solid #06b6d4; color: #38bdf8; font-weight: 600; padding: 6px 12px; cursor: pointer;">🔬 Metadata Inspector</button>
+                <button type="button" id="{uid}_btn_preview" class="{uid}_tab_btn" style="background: transparent; border: none; border-bottom: 3px solid transparent; color: #94a3b8; font-weight: 500; padding: 6px 12px; cursor: pointer;">👁️ Quick Preview</button>
+                <button type="button" id="{uid}_btn_filter" class="{uid}_tab_btn" style="background: transparent; border: none; border-bottom: 3px solid transparent; color: #94a3b8; font-weight: 500; padding: 6px 12px; cursor: pointer;">🔍 Multi-Filter</button>
+                <button type="button" id="{uid}_btn_freq" class="{uid}_tab_btn" style="background: transparent; border: none; border-bottom: 3px solid transparent; color: #94a3b8; font-weight: 500; padding: 6px 12px; cursor: pointer;">📊 Proc Freq</button>
+                <button type="button" id="{uid}_btn_manip" class="{uid}_tab_btn" style="background: transparent; border: none; border-bottom: 3px solid transparent; color: #94a3b8; font-weight: 500; padding: 6px 12px; cursor: pointer;">🛠️ Column Manip & Rename</button>
+                <button type="button" id="{uid}_btn_options" class="{uid}_tab_btn" style="background: transparent; border: none; border-bottom: 3px solid transparent; color: #94a3b8; font-weight: 500; padding: 6px 12px; cursor: pointer;">⚙️ Configs</button>
+            </div>
+        </div>
+
+        <div id="{uid}_pane_inspector" class="{uid}_pane" style="display: block;">
+            <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 14px;">
+                <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">DataFrame:</span>
+                        <select id="{uid}_dfSelector" style="background: #0f172a; color: #38bdf8; font-family: monospace; font-size: 13px; border: 1px solid #475569; border-radius: 6px; padding: 5px 10px; outline: none; cursor: pointer;"></select>
+                        <span id="{uid}_shapeBadge" style="font-size: 12px; font-family: monospace; background: #334155; color: #e2e8f0; padding: 4px 8px; border-radius: 5px;">0 rows</span>
+                    </div>
+                    <div>
+                        <input type="text" id="{uid}_searchInput" placeholder="Filter column or type..." 
+                               style="background: #0f172a; color: white; font-size: 12px; border: 1px solid #475569; border-radius: 6px; padding: 6px 12px; outline: none; width: 220px;">
+                    </div>
+                </div>
+
+                <div style="max-height: 420px; overflow-y: auto; border: 1px solid #334155; border-radius: 6px; background-color: #0f172a;">
+                    <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; background-color: #0f172a;">
+                        <thead style="position: sticky; top: 0; background-color: #0f172a; color: #94a3b8; font-family: monospace; text-transform: uppercase; border-bottom: 1px solid #334155; z-index: 10;">
+                            <tr>
+                                <th style="padding: 10px; background-color: #0f172a;">Column Name</th>
+                                <th style="padding: 10px; background-color: #0f172a;">Data Type</th>
+                                <th style="padding: 10px; background-color: #0f172a;">Sample Non-Null #1</th>
+                                <th style="padding: 10px; background-color: #0f172a;">Sample Non-Null #2</th>
+                                <th style="padding: 10px; background-color: #0f172a;">Sample Non-Null #3</th>
+                            </tr>
+                        </thead>
+                        <tbody id="{uid}_tableBody" style="font-family: monospace; background-color: #0f172a;">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="{uid}_pane_preview" class="{uid}_pane" style="display: none;">
+            <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 14px;">
+                
+                <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Column Selection:</span>
+                        <span id="{uid}_selectedCountBadge" style="font-size: 11px; font-family: monospace; background: #0369a1; color: #e0f2fe; padding: 3px 8px; border-radius: 4px; font-weight: 600;">0 visible</span>
+                    </div>
+                    <div>
+                        <input type="text" id="{uid}_rowSearchInput" placeholder="Search preview rows..." 
+                               style="background: #0f172a; color: white; font-size: 12px; border: 1px solid #475569; border-radius: 6px; padding: 6px 12px; width: 220px; outline: none;">
+                    </div>
+                </div>
+
+                <div style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 10px; margin-bottom: 14px;">
+                    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; border-bottom: 1px solid #1e293b; padding-bottom: 8px;">
+                        <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 240px;">
+                            <input type="text" id="{uid}_colFilterSearch" placeholder="🔍 Search columns..." 
+                                   style="background: #1e293b; color: #38bdf8; font-size: 12px; border: 1px solid #475569; border-radius: 5px; padding: 5px 10px; width: 100%; max-width: 260px; outline: none;">
+                            <button type="button" id="{uid}_btnSelectFiltered" style="background: #334155; color: #cbd5e1; border: 1px solid #475569; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; white-space: nowrap;">Check All</button>
+                            <button type="button" id="{uid}_btnUncheckFiltered" style="background: #334155; color: #cbd5e1; border: 1px solid #475569; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; white-space: nowrap;">Clear All</button>
+                        </div>
+                        <div>
+                            <button type="button" id="{uid}_btnApplyCols" style="background: linear-gradient(135deg, #0891b2, #0284c7); color: white; font-weight: 600; border: none; padding: 5px 14px; border-radius: 5px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 5px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);">
+                                <span>✓ Apply Columns</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="{uid}_colChecklistContainer" style="display: flex; flex-wrap: wrap; gap: 8px; max-height: 110px; overflow-y: auto; padding: 4px;">
+                    </div>
+                </div>
+
+                <div style="max-height: 420px; overflow: auto; border: 1px solid #334155; border-radius: 6px; background-color: #0f172a;">
+                    <table id="{uid}_previewTable" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; font-family: monospace; background-color: #0f172a;">
+                        <thead style="position: sticky; top: 0; background-color: #0f172a; color: #94a3b8; text-transform: uppercase; border-bottom: 1px solid #334155; z-index: 10;">
+                            <tr id="{uid}_previewTheadRow"></tr>
+                        </thead>
+                        <tbody id="{uid}_previewTbody" style="background-color: #0f172a;"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="{uid}_pane_filter" class="{uid}_pane" style="display: none;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px;">
+                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">1. Multi-Condition Logic (&, |, ~)</span>
+                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 5px; padding: 4px 6px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center; justify-content: center;">
+                            <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        </button>
+                    </div>
+                    <pre style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; font-size: 12px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code># Parentheses () are mandatory around each clause
+df.filter(
+    (pl.col("age") >= 25) &
+    (pl.col("status") == "Active") &
+    (pl.col("salary") > 50000)
+)</code></pre>
+                </div>
+
+                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">2. Dynamic Lists & String Matching</span>
+                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 5px; padding: 4px 6px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center; justify-content: center;">
+                            <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        </button>
+                    </div>
+                    <pre style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; font-size: 12px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code>target_regions = ["North", "APAC", "West"]
+df.filter(
+    pl.col("region").is_in(target_regions) &
+    pl.col("email").str.contains(r"@gmail\\.com$") &
+    ~pl.col("is_archived")
+)</code></pre>
+                </div>
+            </div>
+        </div>
+
+        <div id="{uid}_pane_freq" class="{uid}_pane" style="display: none;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px;">
+                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">1D Freq Table (Count + %)</span>
+                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 5px; padding: 4px 6px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center; justify-content: center;">
+                            <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        </button>
+                    </div>
+                    <pre style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; font-size: 12px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code># 1D proc freq alternative
+(
+    df.group_by("category")
+    .agg(
+        Frequency=pl.len(),
+        Percentage=(pl.len() / len(df) * 100).round(2)
+    )
+    .sort("Frequency", descending=True)
+)</code></pre>
+                </div>
+
+                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">2D Crosstab Matrix (Pivot)</span>
+                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 5px; padding: 4px 6px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center; justify-content: center;">
+                            <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        </button>
+                    </div>
+                    <pre style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; font-size: 12px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code># 2D cross-tab (Row: region, Col: status)
+(
+    df.pivot(
+        on="status",
+        index="region",
+        aggregate_function=pl.len()
+    )
+    .fill_null(0)
+)</code></pre>
+                </div>
+            </div>
+        </div>
+
+        <div id="{uid}_pane_manip" class="{uid}_pane" style="display: none;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px;">
+                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">1. Multiple Columns Rename</span>
+                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 5px; padding: 4px 6px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center; justify-content: center;">
+                            <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        </button>
+                    </div>
+                    <pre style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; font-size: 12px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code># A. Multiple rename using Dictionary Mapping
+df_renamed = df.rename({{
+    "old_col_1": "new_col_1",
+    "old_col_2": "new_col_2",
+    "old_col_3": "new_col_3"
+}})
+
+# B. Dynamic renaming with Lambda (e.g. lowercase + replace space)
+df_clean = df.rename(lambda c: c.lower().replace(" ", "_"))
+
+# C. Batch Prefix or Suffix to all columns
+df_prefixed = df.select(pl.all().name.prefix("raw_"))</code></pre>
+                </div>
+
+                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">2. Split Variable into Columns</span>
+                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 5px; padding: 4px 6px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center; justify-content: center;">
+                            <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        </button>
+                    </div>
+                    <pre style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; font-size: 12px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code># Split exact string into struct fields
+df.with_columns(
+    first_name=pl.col("name").str.split_exact(" ", 1).struct.field("field_0"),
+    last_name=pl.col("name").str.split_exact(" ", 1).struct.field("field_1")
+)</code></pre>
+                </div>
+
+                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">3. Conditional Logic (when / then)</span>
+                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 5px; padding: 4px 6px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center; justify-content: center;">
+                            <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        </button>
+                    </div>
+                    <pre style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; font-size: 12px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code>df.with_columns(
+    tier=pl.when(pl.col("spend") > 1000).then(pl.lit("Gold"))
+           .when(pl.col("spend") > 500).then(pl.lit("Silver"))
+           .otherwise(pl.lit("Standard"))
+)</code></pre>
+                </div>
+
+                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">4. Regex Extraction & Casting</span>
+                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 5px; padding: 4px 6px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center; justify-content: center;">
+                            <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        </button>
+                    </div>
+                    <pre style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; font-size: 12px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code># Note: regex escapes handled cleanly
+df.with_columns(
+    domain=pl.col("email").str.extract(r"@([\\w\\.]+)", 1),
+    amount_num=pl.col("amount_str").cast(pl.Float64)
+)</code></pre>
+                </div>
+            </div>
+        </div>
+
+        <div id="{uid}_pane_options" class="{uid}_pane" style="display: none;">
+            <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">Polars Global Display Options</span>
+                    <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 5px; padding: 4px 6px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center; justify-content: center;">
+                        <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                    </button>
+                </div>
+                <pre style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; font-size: 12px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code># Set Jupyter notebook formatting & rows/cols
+pl.Config.set_tbl_rows(25)             # Max rows displayed
+pl.Config.set_tbl_cols(20)             # Max cols displayed
+pl.Config.set_tbl_width_chars(140)     # Width of table
+pl.Config.set_fmt_str_lengths(60)      # Max string length before ellipsis
+pl.Config.set_float_precision(3)       # Float decimal precision
+
+# Temporary context manager for wide output
+with pl.Config(tbl_rows=100, tbl_cols=50, fmt_str_lengths=100):
+    print(df)</code></pre>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+    (function() {{
+        var meta = {metadata_json};
+        var root = document.getElementById("{uid}_root");
+        var selector = document.getElementById("{uid}_dfSelector");
+        var shapeBadge = document.getElementById("{uid}_shapeBadge");
+        var tbody = document.getElementById("{uid}_tableBody");
+        var searchInput = document.getElementById("{uid}_searchInput");
+
+        var previewTheadRow = document.getElementById("{uid}_previewTheadRow");
+        var previewTbody = document.getElementById("{uid}_previewTbody");
+        var colChecklistContainer = document.getElementById("{uid}_colChecklistContainer");
+        var colFilterSearch = document.getElementById("{uid}_colFilterSearch");
+        var rowSearchInput = document.getElementById("{uid}_rowSearchInput");
+        var selectedCountBadge = document.getElementById("{uid}_selectedCountBadge");
+        var btnApplyCols = document.getElementById("{uid}_btnApplyCols");
+
+        var pendingSelectedCols = new Set();
+        var appliedCols = new Set();
+        var tabs = ["inspector", "preview", "filter", "freq", "manip", "options"];
+
+        // Format sample values (High contrast for actual data, dim for nulls)
+        function formatSample(val) {{
+            if (val === "None" || val === "null" || val === null || val === undefined) {{
+                return '<span style="color: #64748b !important; font-style: italic;">null</span>';
+            }}
+            return '<span style="color: #ffffff !important; font-weight: 500;">' + val + '</span>';
+        }}
+
+        // Setup Tab Click Listeners
+        tabs.forEach(function(t) {{
+            var btn = document.getElementById("{uid}_btn_" + t);
+            if (!btn) return;
+            btn.onclick = function() {{
+                tabs.forEach(function(other) {{
+                    var otherBtn = document.getElementById("{uid}_btn_" + other);
+                    var otherPane = document.getElementById("{uid}_pane_" + other);
+                    if (otherBtn) {{
+                        otherBtn.style.borderBottom = "3px solid transparent";
+                        otherBtn.style.color = "#94a3b8";
+                        otherBtn.style.fontWeight = "500";
+                    }}
+                    if (otherPane) {{
+                        otherPane.style.display = "none";
+                    }}
+                }});
+                btn.style.borderBottom = "3px solid #06b6d4";
+                btn.style.color = "#38bdf8";
+                btn.style.fontWeight = "600";
+                var targetPane = document.getElementById("{uid}_pane_" + t);
+                if (targetPane) targetPane.style.display = "block";
+            }};
+        }});
+
+        // Setup Icon-Only Copy Buttons
+        var copyBtns = root.querySelectorAll(".{uid}_copy_btn");
+        copyBtns.forEach(function(btn) {{
+            btn.onclick = function() {{
+                var card = btn.closest("div").parentElement;
+                var codeEl = card.querySelector("pre code");
+                if (!codeEl) return;
+                
+                var originalSvg = btn.innerHTML;
+                navigator.clipboard.writeText(codeEl.innerText).then(function() {{
+                    btn.innerHTML = '<svg style="width: 14px; height: 14px; color: #34d399;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
+                    btn.style.borderColor = "#34d399";
+                    setTimeout(function() {{
+                        btn.innerHTML = originalSvg;
+                        btn.style.borderColor = "#475569";
+                    }}, 1500);
+                }});
+            }};
+        }});
+
+        // Populate DataFrames Dropdown
+        selector.innerHTML = '';
+        var dfNames = Object.keys(meta);
+        if (dfNames.length === 0) {{
+            selector.innerHTML = '<option value="">No DataFrames in Memory</option>';
+            shapeBadge.innerText = '0 DataFrames';
+            tbody.innerHTML = '<tr><td colspan="5" style="padding: 16px; text-align: center; color: #64748b; background-color: #0f172a !important;">No active Polars DataFrames detected in this notebook session.</td></tr>';
+            return;
+        }}
+
+        dfNames.forEach(function(name) {{
+            var opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            selector.appendChild(opt);
+        }});
+
+        // Render Inspector Table
+        function renderRows() {{
+            var dfName = selector.value;
+            if (!dfName || !meta[dfName]) return;
+            
+            var dfInfo = meta[dfName];
+            shapeBadge.innerText = dfInfo.shape;
+            
+            var rowsHtml = '';
+            dfInfo.columns.forEach(function(c) {{
+                rowsHtml += '<tr style="border-bottom: 1px solid #334155; background-color: #0f172a !important;">' +
+                    '<td style="padding: 8px 10px; font-weight: bold; color: #38bdf8 !important; background-color: #0f172a !important;">' + c.col + '</td>' +
+                    '<td style="padding: 8px 10px; background-color: #0f172a !important;"><span style="background: #334155; color: #67e8f9 !important; padding: 2px 6px; border-radius: 4px; font-size: 11px;">' + c.dtype + '</span></td>' +
+                    '<td style="padding: 8px 10px; background-color: #0f172a !important;">' + formatSample(c.sample1) + '</td>' +
+                    '<td style="padding: 8px 10px; background-color: #0f172a !important;">' + formatSample(c.sample2) + '</td>' +
+                    '<td style="padding: 8px 10px; background-color: #0f172a !important;">' + formatSample(c.sample3) + '</td>' +
+                '</tr>';
+            }});
+            tbody.innerHTML = rowsHtml;
+            initPreviewTab(dfInfo);
+        }}
+
+        // Initialize SAS Viya Style Quick Preview Tab
+        function initPreviewTab(dfInfo) {{
+            // Default: select up to first 8 columns
+            pendingSelectedCols = new Set(dfInfo.col_names.slice(0, 8));
+            appliedCols = new Set(pendingSelectedCols);
+            renderChecklist(dfInfo);
+            renderPreviewTable(dfInfo);
+        }}
+
+        function renderChecklist(dfInfo) {{
+            colChecklistContainer.innerHTML = '';
+            var filterTxt = colFilterSearch.value.toLowerCase();
+            var matches = 0;
+
+            dfInfo.col_names.forEach(function(col) {{
+                if (filterTxt && !col.toLowerCase().includes(filterTxt)) return;
+                matches++;
+                var isChecked = pendingSelectedCols.has(col);
+                var dtype = dfInfo.col_types[col] || '';
+
+                var label = document.createElement('label');
+                label.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 5px; font-size: 11px; cursor: pointer; font-family: monospace; background: ' + 
+                    (isChecked ? '#1e293b;' : '#0f172a;') + ' border: 1px solid ' + (isChecked ? '#0284c7;' : '#334155;') + ' color: #e2e8f0; user-select: none;';
+
+                var chk = document.createElement('input');
+                chk.type = 'checkbox';
+                chk.checked = isChecked;
+                chk.style.cssText = 'cursor: pointer; accent-color: #06b6d4;';
+
+                chk.onchange = function() {{
+                    if (this.checked) {{
+                        pendingSelectedCols.add(col);
+                    }} else {{
+                        pendingSelectedCols.delete(col);
+                    }}
+                    label.style.background = this.checked ? '#1e293b' : '#0f172a';
+                    label.style.borderColor = this.checked ? '#0284c7' : '#334155';
+                }};
+
+                label.appendChild(chk);
+
+                var spanCol = document.createElement('span');
+                spanCol.style.cssText = 'font-weight: 600; color: ' + (isChecked ? '#38bdf8' : '#cbd5e1') + ';';
+                spanCol.textContent = col;
+                label.appendChild(spanCol);
+
+                var spanType = document.createElement('span');
+                spanType.style.cssText = 'font-size: 10px; color: #64748b;';
+                spanType.textContent = '(' + dtype + ')';
+                label.appendChild(spanType);
+
+                colChecklistContainer.appendChild(label);
+            }});
+
+            if (matches === 0) {{
+                colChecklistContainer.innerHTML = '<span style="font-size: 11px; color: #64748b; padding: 6px;">No columns matching "' + colFilterSearch.value + '"</span>';
+            }}
+        }}
+
+        function renderPreviewTable(dfInfo) {{
+            selectedCountBadge.innerText = appliedCols.size + ' visible';
+            var colIndices = [];
+            var thHtml = '<th style="padding: 8px 10px; background-color: #0f172a !important; color: #64748b !important;">#</th>';
+            
+            dfInfo.col_names.forEach(function(col, idx) {{
+                if (appliedCols.has(col)) {{
+                    colIndices.push(idx);
+                    thHtml += '<th style="padding: 8px 10px; color: #38bdf8 !important; background-color: #0f172a !important; border-left: 1px solid #334155;">' + col + '</th>';
+                }}
+            }});
+            previewTheadRow.innerHTML = thHtml;
+
+            if (colIndices.length === 0) {{
+                previewTbody.innerHTML = '<tr><td colspan="100" style="padding: 20px; text-align: center; color: #94a3b8; background-color: #0f172a !important;">No columns selected. Check columns above and click <b style="color: #38bdf8;">"✓ Apply Columns"</b>.</td></tr>';
+                return;
+            }}
+
+            var rowQuery = rowSearchInput.value.toLowerCase();
+            var tbHtml = '';
+            
+            dfInfo.preview_data.forEach(function(row, rIdx) {{
+                var rowMatch = false;
+                var cellsHtml = '';
+                
+                colIndices.forEach(function(cIdx) {{
+                    var val = row[cIdx];
+                    if (!rowQuery || val.toLowerCase().includes(rowQuery)) rowMatch = true;
+                    cellsHtml += '<td style="padding: 6px 10px; border-left: 1px solid #334155; color: #ffffff !important; background-color: #0f172a !important; white-space: nowrap;">' + val + '</td>';
+                }});
+
+                if (!rowQuery || rowMatch) {{
+                    tbHtml += '<tr style="border-bottom: 1px solid #334155; background-color: #0f172a !important;">' +
+                        '<td style="padding: 6px 10px; color: #64748b !important; background-color: #0f172a !important;">' + (rIdx + 1) + '</td>' + cellsHtml +
+                    '</tr>';
+                }}
+            }});
+            previewTbody.innerHTML = tbHtml || '<tr><td colspan="100" style="padding: 16px; text-align: center; color: #64748b; background-color: #0f172a !important;">No matching preview records found.</td></tr>';
+        }}
+
+        // Search in Column Checklist
+        colFilterSearch.onkeyup = function() {{
+            var dfInfo = meta[selector.value];
+            if (dfInfo) renderChecklist(dfInfo);
+        }};
+
+        // Check All (matches current search)
+        document.getElementById("{uid}_btnSelectFiltered").onclick = function() {{
+            var dfInfo = meta[selector.value];
+            if (!dfInfo) return;
+            var filterTxt = colFilterSearch.value.toLowerCase();
+            dfInfo.col_names.forEach(function(c) {{
+                if (!filterTxt || c.toLowerCase().includes(filterTxt)) {{
+                    pendingSelectedCols.add(c);
+                }}
+            }});
+            renderChecklist(dfInfo);
+        }};
+
+        // Clear All (matches current search)
+        document.getElementById("{uid}_btnUncheckFiltered").onclick = function() {{
+            var dfInfo = meta[selector.value];
+            if (!dfInfo) return;
+            var filterTxt = colFilterSearch.value.toLowerCase();
+            dfInfo.col_names.forEach(function(c) {{
+                if (!filterTxt || c.toLowerCase().includes(filterTxt)) {{
+                    pendingSelectedCols.delete(c);
+                }}
+            }});
+            renderChecklist(dfInfo);
+        }};
+
+        // Apply Columns Button
+        btnApplyCols.onclick = function() {{
+            var dfInfo = meta[selector.value];
+            if (!dfInfo) return;
+            appliedCols = new Set(pendingSelectedCols);
+            renderPreviewTable(dfInfo);
+            
+            // Visual pulse feedback on button
+            var origBg = btnApplyCols.style.background;
+            btnApplyCols.style.background = '#059669';
+            setTimeout(function() {{
+                btnApplyCols.style.background = origBg;
+            }}, 600);
+        }};
+
+        // Row search within table
+        rowSearchInput.onkeyup = function() {{
+            var dfInfo = meta[selector.value];
+            if (dfInfo) renderPreviewTable(dfInfo);
+        }};
+
+        selector.onchange = renderRows;
+
+        // Inspector Column Search Filter
+        searchInput.onkeyup = function() {{
+            var query = searchInput.value.toLowerCase();
+            var rows = tbody.getElementsByTagName('tr');
+            for (var i = 0; i < rows.length; i++) {{
+                var txt = rows[i].innerText.toLowerCase();
+                rows[i].style.display = txt.includes(query) ? '' : 'none';
+            }}
+        }};
+
+        renderRows();
+    }})();
+    </script>
+    """
+    
+    if save_html:
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(html_content)
+
+    display(HTML(html_content))
