@@ -1,13 +1,15 @@
+import html
 import json
+import time
 import uuid
+import ipywidgets as widgets
 import polars as pl
 from IPython.display import HTML, display
 
 def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filename: str = "polars_jupyter_helper.html"):
     """
-    Scans the Jupyter session for active Polars DataFrames, compiles metadata 
-    (3 sample non-null values + head preview slice for SAS Viya-style inspection),
-    and launches an isolated interactive UI with Jupyter CSS isolation.
+    Rajapriyan Coding Toolkit: Interactive Polars Metadata Inspector & 
+    Full-Dataset Quick Preview with Multi-Column Filtering and Zero Cell Overlap.
     """
     # 1. Inspect Python interactive namespace
     try:
@@ -17,71 +19,471 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
     except Exception:
         user_ns = globals()
 
-    dfs_metadata = {}
+    dfs_dict = {
+        name: obj for name, obj in user_ns.items()
+        if isinstance(obj, pl.DataFrame) and not name.startswith('_')
+    }
 
-    for var_name, obj in user_ns.items():
-        if isinstance(obj, pl.DataFrame) and not var_name.startswith('_'):
-            cols_info = []
-            for col in obj.columns:
-                dtype = str(obj[col].dtype)
-                try:
-                    non_nulls = obj[col].drop_nulls()
-                    s1 = str(non_nulls[0]) if len(non_nulls) > 0 else "None"
-                    s2 = str(non_nulls[1]) if len(non_nulls) > 1 else "None"
-                    s3 = str(non_nulls[2]) if len(non_nulls) > 2 else "None"
-                except Exception:
-                    s1, s2, s3 = "None", "None", "None"
-                
-                # Truncate long strings for clean table alignment
-                s1 = (s1[:40] + '...') if len(s1) > 40 else s1
-                s2 = (s2[:40] + '...') if len(s2) > 40 else s2
-                s3 = (s3[:40] + '...') if len(s3) > 40 else s3
-                
-                cols_info.append({
-                    "col": str(col),
-                    "dtype": dtype,
-                    "sample1": s1,
-                    "sample2": s2,
-                    "sample3": s3
-                })
-            
-            # Sliced preview for large datasets (SAS Viya style)
-            preview_slice = obj.head(preview_rows)
-            preview_records = []
-            for row in preview_slice.iter_rows():
-                preview_records.append([str(v) if v is not None else "null" for v in row])
-
-            dfs_metadata[var_name] = {
-                "shape": f"{obj.shape[0]:,} rows × {obj.shape[1]:,} cols",
-                "columns": cols_info,
-                "col_names": [str(c) for c in obj.columns],
-                "col_types": {str(c): str(obj[c].dtype) for c in obj.columns},
-                "preview_data": preview_records
-            }
-
-    metadata_json = json.dumps(dfs_metadata)
     uid = f"pl_{uuid.uuid4().hex[:8]}"
 
-    # 2. Build isolated HTML with Jupyter CSS Overrides
-    html_content = f"""
+    # Extract static metadata for cheatsheets & inspector
+    dfs_metadata = {}
+    for var_name, obj in dfs_dict.items():
+        cols_info = []
+        for col in obj.columns:
+            dtype = str(obj[col].dtype)
+            try:
+                non_nulls = obj[col].drop_nulls()
+                s1 = str(non_nulls[0]) if len(non_nulls) > 0 else "None"
+                s2 = str(non_nulls[1]) if len(non_nulls) > 1 else "None"
+                s3 = str(non_nulls[2]) if len(non_nulls) > 2 else "None"
+            except Exception:
+                s1, s2, s3 = "None", "None", "None"
+            
+            s1 = (s1[:35] + '...') if len(s1) > 35 else s1
+            s2 = (s2[:35] + '...') if len(s2) > 35 else s2
+            s3 = (s3[:35] + '...') if len(s3) > 35 else s3
+            
+            cols_info.append({
+                "col": str(col),
+                "dtype": dtype,
+                "sample1": s1,
+                "sample2": s2,
+                "sample3": s3
+            })
+        
+        dfs_metadata[var_name] = {
+            "shape": f"{obj.shape[0]:,} rows × {obj.shape[1]:,} cols",
+            "columns": cols_info,
+            "col_names": [str(c) for c in obj.columns]
+        }
+
+    metadata_json = json.dumps(dfs_metadata)
+
+    # 2. Main Outer Layout Style
+    css_styles = f"""
     <style>
-        /* Force Jupyter to not inject white table backgrounds */
-        #{uid}_root table,
-        #{uid}_root thead,
-        #{uid}_root tbody,
-        #{uid}_root tr,
-        #{uid}_root th,
-        #{uid}_root td {{
+        #{uid}_container {{
             background-color: #0f172a !important;
             color: #f8fafc !important;
-            border-color: #334155 !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+            border-radius: 12px;
+            border: 1px solid #334155;
+            padding: 18px;
+            margin: 10px 0;
+            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5);
         }}
-        #{uid}_root tr:hover td {{
+        #{uid}_container .widget-dropdown select,
+        #{uid}_container .widget-text input {{
+            background-color: #1e293b !important;
+            color: #f8fafc !important;
+            border: 1px solid #475569 !important;
+            border-radius: 6px !important;
+            font-family: monospace !important;
+            font-size: 12px !important;
+            padding: 4px 8px !important;
+        }}
+        #{uid}_container .widget-button button {{
+            border-radius: 6px !important;
+            font-size: 12px !important;
+            font-weight: 600 !important;
+        }}
+        /* Table Layout & Overlap Protection */
+        #{uid}_container table.preview-table {{
+            border-collapse: separate !important;
+            border-spacing: 0 !important;
+            min-width: 100% !important;
+            width: max-content !important;
+            background-color: #0f172a !important;
+        }}
+        #{uid}_container table.preview-table th,
+        #{uid}_container table.preview-table td {{
+            padding: 8px 14px !important;
+            white-space: nowrap !important;
+            max-width: 320px !important;
+            min-width: 130px !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            border-right: 1px solid #334155 !important;
+            border-bottom: 1px solid #334155 !important;
+            box-sizing: border-box !important;
+            font-family: monospace !important;
+            font-size: 12px !important;
+        }}
+        #{uid}_container table.preview-table th {{
+            position: sticky !important;
+            top: 0 !important;
+            background-color: #1e293b !important;
+            color: #38bdf8 !important;
+            font-weight: 700 !important;
+            z-index: 10 !important;
+            text-transform: uppercase !important;
+        }}
+        #{uid}_container table.preview-table td {{
+            color: #ffffff !important;
+            background-color: #0f172a !important;
+        }}
+        #{uid}_container table.preview-table tr:hover td {{
             background-color: #1e293b !important;
         }}
     </style>
+    """
 
-    <div id="{uid}_root" style="background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; border-radius: 12px; border: 1px solid #334155; padding: 18px; margin: 10px 0; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5);">
+    # 3. Interactive Quick Preview Engine (Python <-> Polars Backend)
+    preview_output = widgets.Output()
+    filter_rows_container = widgets.VBox([])
+    active_filters = []
+    
+    # State tracking
+    current_df_name = list(dfs_dict.keys())[0] if dfs_dict else None
+    applied_columns = set()
+
+    # Top Toolbar Widgets
+    df_dropdown = widgets.Dropdown(
+        options=list(dfs_dict.keys()) if dfs_dict else ["No DataFrame Found"],
+        value=current_df_name,
+        description='DataFrame:',
+        style={'description_width': '80px'},
+        layout=widgets.Layout(width='280px')
+    )
+    
+    shape_label = widgets.HTML(
+        value=f"<span style='font-family:monospace; background:#334155; color:#38bdf8; padding:4px 8px; border-radius:5px; font-size:12px;'>{dfs_metadata[current_df_name]['shape'] if current_df_name else '0 rows'}</span>"
+    )
+
+    col_search_input = widgets.Text(placeholder="🔍 Search columns...", layout=widgets.Layout(width='200px'))
+    btn_select_all_cols = widgets.Button(description="All", layout=widgets.Layout(width='50px'))
+    btn_clear_all_cols = widgets.Button(description="Clear", layout=widgets.Layout(width='55px'))
+    btn_apply_cols = widgets.Button(description="✓ Apply Columns", button_style='info', layout=widgets.Layout(width='130px'))
+    col_checklist_box = widgets.HBox([], layout=widgets.Layout(flex_flow='row wrap', max_height='95px', overflow='auto', padding='6px', border='1px solid #334155'))
+
+    btn_add_filter = widgets.Button(description="+ Add Column Filter", button_style='primary', layout=widgets.Layout(width='160px'))
+    btn_run_filter = widgets.Button(description="⚡ Run Polars Filter", button_style='success', layout=widgets.Layout(width='160px'))
+    btn_reset_filters = widgets.Button(description="↺ Reset Filters", layout=widgets.Layout(width='120px'))
+
+    status_code_box = widgets.HTML(value="")
+
+    # Column checklist state
+    pending_cols = set()
+
+    def update_col_checkboxes():
+        if not current_df_name or current_df_name not in dfs_dict:
+            col_checklist_box.children = []
+            return
+        
+        df_obj = dfs_dict[current_df_name]
+        query = col_search_input.value.strip().lower()
+        
+        checkbox_widgets = []
+        for col in df_obj.columns:
+            if query and query not in col.lower():
+                continue
+            
+            chk = widgets.Checkbox(
+                value=(col in pending_cols),
+                description=f"{col} ({df_obj[col].dtype})",
+                indent=False,
+                layout=widgets.Layout(width='auto', margin='2px 8px 2px 0px')
+            )
+            
+            def make_chk_handler(c_name):
+                def handler(change):
+                    if change['new']:
+                        pending_cols.add(c_name)
+                    else:
+                        pending_cols.discard(c_name)
+                return handler
+
+            chk.observe(make_chk_handler(col), names='value')
+            checkbox_widgets.append(chk)
+
+        col_checklist_box.children = checkbox_widgets
+
+    def create_filter_row():
+        if not current_df_name or current_df_name not in dfs_dict:
+            return
+        df_obj = dfs_dict[current_df_name]
+        
+        col_dd = widgets.Dropdown(options=df_obj.columns, layout=widgets.Layout(width='190px'))
+        op_dd = widgets.Dropdown(
+            options=[
+                ('contains', 'contains'),
+                ('equals (==)', '=='),
+                ('not equals (!=)', '!='),
+                ('starts with', 'starts_with'),
+                ('ends with', 'ends_with'),
+                ('> (greater than)', '>'),
+                ('>= (greater/equal)', '>='),
+                ('< (less than)', '<'),
+                ('<= (less/equal)', '<='),
+                ('is not null', 'is_not_null'),
+                ('is null', 'is_null')
+            ],
+            value='contains',
+            layout=widgets.Layout(width='160px')
+        )
+        val_txt = widgets.Text(placeholder="Filter value...", layout=widgets.Layout(width='200px'))
+        btn_del = widgets.Button(description="✕", button_style='danger', layout=widgets.Layout(width='40px'))
+
+        row_box = widgets.HBox([col_dd, op_dd, val_txt, btn_del], layout=widgets.Layout(margin='3px 0'))
+        
+        filter_item = {
+            "widget": row_box,
+            "col_dd": col_dd,
+            "op_dd": op_dd,
+            "val_txt": val_txt
+        }
+        active_filters.append(filter_item)
+
+        def remove_row(b):
+            if filter_item in active_filters:
+                active_filters.remove(filter_item)
+                filter_rows_container.children = [f["widget"] for f in active_filters]
+
+        btn_del.on_click(remove_row)
+        filter_rows_container.children = [f["widget"] for f in active_filters]
+
+    def render_polars_table():
+        if not current_df_name or current_df_name not in dfs_dict:
+            with preview_output:
+                preview_output.clear_output()
+                display(HTML("<div style='padding:16px; color:#64748b;'>No active Polars DataFrame selected.</div>"))
+            return
+
+        df_obj = dfs_dict[current_df_name]
+        t0 = time.time()
+
+        # Build Polars expression dynamically
+        filter_exprs = []
+        code_snippets = []
+
+        for f in active_filters:
+            col = f["col_dd"].value
+            op = f["op_dd"].value
+            val = f["val_txt"].value.strip()
+            dtype_str = str(df_obj[col].dtype)
+
+            if op == "is_not_null":
+                filter_exprs.append(pl.col(col).is_not_null())
+                code_snippets.append(f'pl.col("{col}").is_not_null()')
+            elif op == "is_null":
+                filter_exprs.append(pl.col(col).is_null())
+                code_snippets.append(f'pl.col("{col}").is_null()')
+            elif val:
+                if op == "contains":
+                    filter_exprs.append(pl.col(col).cast(pl.Utf8).str.contains(val, literal=True))
+                    code_snippets.append(f'pl.col("{col}").cast(pl.Utf8).str.contains(r"{val}", literal=True)')
+                elif op == "starts_with":
+                    filter_exprs.append(pl.col(col).cast(pl.Utf8).str.starts_with(val))
+                    code_snippets.append(f'pl.col("{col}").cast(pl.Utf8).str.starts_with("{val}")')
+                elif op == "ends_with":
+                    filter_exprs.append(pl.col(col).cast(pl.Utf8).str.ends_with(val))
+                    code_snippets.append(f'pl.col("{col}").cast(pl.Utf8).str.ends_with("{val}")')
+                elif op == "==":
+                    if "Int" in dtype_str or "Float" in dtype_str:
+                        try:
+                            num = float(val) if "." in val else int(val)
+                            filter_exprs.append(pl.col(col) == num)
+                            code_snippets.append(f'pl.col("{col}") == {num}')
+                        except Exception:
+                            filter_exprs.append(pl.col(col).cast(pl.Utf8) == val)
+                            code_snippets.append(f'pl.col("{col}").cast(pl.Utf8) == "{val}"')
+                    else:
+                        filter_exprs.append(pl.col(col).cast(pl.Utf8) == val)
+                        code_snippets.append(f'pl.col("{col}") == "{val}"')
+                elif op == "!=":
+                    filter_exprs.append(pl.col(col).cast(pl.Utf8) != val)
+                    code_snippets.append(f'pl.col("{col}").cast(pl.Utf8) != "{val}"')
+                elif op in (">", ">=", "<", "<="):
+                    try:
+                        num = float(val) if "." in val else int(val)
+                        if op == ">": filter_exprs.append(pl.col(col) > num)
+                        elif op == ">=": filter_exprs.append(pl.col(col) >= num)
+                        elif op == "<": filter_exprs.append(pl.col(col) < num)
+                        elif op == "<=": filter_exprs.append(pl.col(col) <= num)
+                        code_snippets.append(f'pl.col("{col}") {op} {num}')
+                    except Exception:
+                        filter_exprs.append(pl.col(col).cast(pl.Utf8) > val)
+                        code_snippets.append(f'pl.col("{col}").cast(pl.Utf8) {op} "{val}"')
+
+        # Execute Polars Filter
+        try:
+            if filter_exprs:
+                combined_expr = filter_exprs[0]
+                for expr in filter_exprs[1:]:
+                    combined_expr = combined_expr & expr
+                filtered_df = df_obj.filter(combined_expr)
+            else:
+                filtered_df = df_obj
+        except Exception as err:
+            with preview_output:
+                preview_output.clear_output()
+                display(HTML(f"<div style='padding:16px; color:#f87171;'>Polars Filter Error: {html.escape(str(err))}</div>"))
+            return
+
+        elapsed_ms = (time.time() - t0) * 1000
+        matched_count = filtered_df.shape[0]
+
+        # Apply Column Visibility
+        cols_to_show = [c for c in df_obj.columns if c in applied_columns]
+        if not cols_to_show:
+            cols_to_show = df_obj.columns[:8]
+            applied_columns.clear()
+            applied_columns.update(cols_to_show)
+
+        slice_df = filtered_df.select(cols_to_show).head(preview_rows)
+
+        # Build Status & Generated Code Info Box
+        code_str = f'{current_df_name}.filter({" & ".join(code_snippets)})' if code_snippets else f'{current_df_name}.head({preview_rows})'
+        status_html = f"""
+        <div style="background:#0f172a; border:1px solid #334155; border-radius:6px; padding:10px; margin:8px 0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; margin-bottom:4px;">
+                <span style="color:#34d399; font-weight:600;">⚡ Filter Matched: {matched_count:,} of {df_obj.shape[0]:,} rows <span style="color:#94a3b8; font-weight:normal;">({elapsed_ms:.1f} ms)</span></span>
+                <span style="color:#38bdf8; font-family:monospace;">Showing top {min(preview_rows, matched_count)} rows × {len(cols_to_show)} cols</span>
+            </div>
+            <div style="font-family:monospace; font-size:11px; color:#94a3b8; background:#1e293b; padding:6px 10px; border-radius:4px; overflow-x:auto;">
+                <span style="color:#38bdf8;">Code:</span> {html.escape(code_str)}
+            </div>
+        </div>
+        """
+        status_code_box.value = status_html
+
+        # Build HTML Table (Zero Overlap with Tooltip Support)
+        th_cells = '<th style="width:50px; min-width:50px; max-width:50px; text-align:center;">#</th>'
+        for col in cols_to_show:
+            th_cells += f'<th title="{html.escape(col)}">{html.escape(col)}</th>'
+        
+        tbody_rows = ""
+        for r_idx, row in enumerate(slice_df.iter_rows()):
+            td_cells = f'<td style="width:50px; min-width:50px; max-width:50px; text-align:center; color:#64748b;">{r_idx + 1}</td>'
+            for val in row:
+                v_str = str(val) if val is not None else "null"
+                td_cells += f'<td title="{html.escape(v_str)}">{html.escape(v_str)}</td>'
+            tbody_rows += f"<tr>{td_cells}</tr>"
+
+        if matched_count == 0:
+            tbody_rows = "<tr><td colspan='100' style='padding:24px; text-align:center; color:#94a3b8;'>No rows matched the filter criteria across the DataFrame.</td></tr>"
+
+        table_html = f"""
+        <div style="max-height:440px; overflow:auto; border:1px solid #334155; border-radius:6px; background-color:#0f172a;">
+            <table class="preview-table">
+                <thead><tr>{th_cells}</tr></thead>
+                <tbody>{tbody_rows}</tbody>
+            </table>
+        </div>
+        """
+
+        with preview_output:
+            preview_output.clear_output()
+            display(HTML(table_html))
+
+    # Event Handlers
+    def on_df_change(change):
+        nonlocal current_df_name
+        current_df_name = change['new']
+        if current_df_name and current_df_name in dfs_dict:
+            df_obj = dfs_dict[current_df_name]
+            shape_label.value = f"<span style='font-family:monospace; background:#334155; color:#38bdf8; padding:4px 8px; border-radius:5px; font-size:12px;'>{dfs_metadata[current_df_name]['shape']}</span>"
+            pending_cols.clear()
+            pending_cols.update(df_obj.columns[:8])
+            applied_columns.clear()
+            applied_columns.update(pending_cols)
+            active_filters.clear()
+            filter_rows_container.children = []
+            update_col_checkboxes()
+            render_polars_table()
+
+    df_dropdown.observe(on_df_change, names='value')
+
+    def on_col_search(change):
+        update_col_checkboxes()
+    col_search_input.observe(on_col_search, names='value')
+
+    def on_select_all_cols(b):
+        if current_df_name and current_df_name in dfs_dict:
+            q = col_search_input.value.strip().lower()
+            for c in dfs_dict[current_df_name].columns:
+                if not q or q in c.lower():
+                    pending_cols.add(c)
+            update_col_checkboxes()
+    btn_select_all_cols.on_click(on_select_all_cols)
+
+    def on_clear_all_cols(b):
+        if current_df_name and current_df_name in dfs_dict:
+            q = col_search_input.value.strip().lower()
+            for c in dfs_dict[current_df_name].columns:
+                if not q or q in c.lower():
+                    pending_cols.discard(c)
+            update_col_checkboxes()
+    btn_clear_all_cols.on_click(on_clear_all_cols)
+
+    def on_apply_cols(b):
+        applied_columns.clear()
+        applied_columns.update(pending_cols)
+        render_polars_table()
+    btn_apply_cols.on_click(on_apply_cols)
+
+    def on_add_filter_click(b):
+        create_filter_row()
+    btn_add_filter.on_click(on_add_filter_click)
+
+    def on_run_filter_click(b):
+        render_polars_table()
+    btn_run_filter.on_click(on_run_filter_click)
+
+    def on_reset_filters_click(b):
+        active_filters.clear()
+        filter_rows_container.children = []
+        render_polars_table()
+    btn_reset_filters.on_click(on_reset_filters_click)
+
+    # Initialize State
+    if current_df_name and current_df_name in dfs_dict:
+        pending_cols.update(dfs_dict[current_df_name].columns[:8])
+        applied_columns.update(pending_cols)
+        update_col_checkboxes()
+
+    # Construct the Quick Preview Tab Widget
+    quick_preview_box = widgets.VBox([
+        widgets.HBox([
+            df_dropdown,
+            shape_label
+        ], layout=widgets.Layout(align_items='center', margin='0 0 8px 0')),
+        
+        # Column selection toolbar
+        widgets.VBox([
+            widgets.HBox([
+                widgets.HTML("<span style='font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase;'>Columns:</span>"),
+                col_search_input,
+                btn_select_all_cols,
+                btn_clear_all_cols,
+                btn_apply_cols
+            ], layout=widgets.Layout(align_items='center', gap='6px', margin='0 0 6px 0')),
+            col_checklist_box
+        ], layout=widgets.Layout(background_color='#0f172a', padding='8px', border='1px solid #334155', border_radius='6px', margin='0 0 10px 0')),
+        
+        # Filter row controls
+        widgets.VBox([
+            widgets.HBox([
+                widgets.HTML("<span style='font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase;'>Parallel Column Filters:</span>"),
+                btn_add_filter,
+                btn_run_filter,
+                btn_reset_filters
+            ], layout=widgets.Layout(align_items='center', gap='8px', margin='0 0 6px 0')),
+            filter_rows_container
+        ], layout=widgets.Layout(background_color='#0f172a', padding='8px', border='1px solid #334155', border_radius='6px', margin='0 0 10px 0')),
+        
+        status_code_box,
+        preview_output
+    ], layout=widgets.Layout(padding='10px', background_color='#1e293b', border_radius='8px', border='1px solid #334155'))
+
+    # Initial render of preview
+    render_polars_table()
+
+    # 4. Master Toolkit HTML (Inspector + Cheatsheets with Icon-Only Copy Buttons)
+    toolkit_html = f"""
+    {css_styles}
+    <div id="{uid}_container">
         
         <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #334155; padding-bottom: 14px; margin-bottom: 16px;">
             <div style="display: flex; align-items: center; gap: 10px;">
@@ -90,8 +492,8 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             </div>
             
             <div style="display: flex; gap: 6px; overflow-x: auto; font-size: 13px;">
-                <button type="button" id="{uid}_btn_inspector" class="{uid}_tab_btn" style="background: transparent; border: none; border-bottom: 3px solid #06b6d4; color: #38bdf8; font-weight: 600; padding: 6px 12px; cursor: pointer;">🔬 Metadata Inspector</button>
-                <button type="button" id="{uid}_btn_preview" class="{uid}_tab_btn" style="background: transparent; border: none; border-bottom: 3px solid transparent; color: #94a3b8; font-weight: 500; padding: 6px 12px; cursor: pointer;">👁️ Quick Preview</button>
+                <button type="button" id="{uid}_btn_preview" class="{uid}_tab_btn" style="background: transparent; border: none; border-bottom: 3px solid #06b6d4; color: #38bdf8; font-weight: 600; padding: 6px 12px; cursor: pointer;">👁️ Quick Preview</button>
+                <button type="button" id="{uid}_btn_inspector" class="{uid}_tab_btn" style="background: transparent; border: none; border-bottom: 3px solid transparent; color: #94a3b8; font-weight: 500; padding: 6px 12px; cursor: pointer;">🔬 Metadata Inspector</button>
                 <button type="button" id="{uid}_btn_filter" class="{uid}_tab_btn" style="background: transparent; border: none; border-bottom: 3px solid transparent; color: #94a3b8; font-weight: 500; padding: 6px 12px; cursor: pointer;">🔍 Multi-Filter</button>
                 <button type="button" id="{uid}_btn_freq" class="{uid}_tab_btn" style="background: transparent; border: none; border-bottom: 3px solid transparent; color: #94a3b8; font-weight: 500; padding: 6px 12px; cursor: pointer;">📊 Proc Freq</button>
                 <button type="button" id="{uid}_btn_manip" class="{uid}_tab_btn" style="background: transparent; border: none; border-bottom: 3px solid transparent; color: #94a3b8; font-weight: 500; padding: 6px 12px; cursor: pointer;">🛠️ Column Manip & Rename</button>
@@ -99,77 +501,35 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             </div>
         </div>
 
-        <div id="{uid}_pane_inspector" class="{uid}_pane" style="display: block;">
+        <div id="{uid}_pane_preview" class="{uid}_pane" style="display: block;">
+            </div>
+
+        <div id="{uid}_pane_inspector" class="{uid}_pane" style="display: none;">
             <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 14px;">
                 <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px;">
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">DataFrame:</span>
-                        <select id="{uid}_dfSelector" style="background: #0f172a; color: #38bdf8; font-family: monospace; font-size: 13px; border: 1px solid #475569; border-radius: 6px; padding: 5px 10px; outline: none; cursor: pointer;"></select>
-                        <span id="{uid}_shapeBadge" style="font-size: 12px; font-family: monospace; background: #334155; color: #e2e8f0; padding: 4px 8px; border-radius: 5px;">0 rows</span>
+                        <select id="{uid}_inspectorDfSelector" style="background: #0f172a; color: #38bdf8; font-family: monospace; font-size: 13px; border: 1px solid #475569; border-radius: 6px; padding: 5px 10px; outline: none; cursor: pointer;"></select>
+                        <span id="{uid}_inspectorShapeBadge" style="font-size: 12px; font-family: monospace; background: #334155; color: #e2e8f0; padding: 4px 8px; border-radius: 5px;">0 rows</span>
                     </div>
                     <div>
-                        <input type="text" id="{uid}_searchInput" placeholder="Filter column or type..." 
+                        <input type="text" id="{uid}_inspectorSearchInput" placeholder="Filter column or type..." 
                                style="background: #0f172a; color: white; font-size: 12px; border: 1px solid #475569; border-radius: 6px; padding: 6px 12px; outline: none; width: 220px;">
                     </div>
                 </div>
 
                 <div style="max-height: 420px; overflow-y: auto; border: 1px solid #334155; border-radius: 6px; background-color: #0f172a;">
-                    <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; background-color: #0f172a;">
-                        <thead style="position: sticky; top: 0; background-color: #0f172a; color: #94a3b8; font-family: monospace; text-transform: uppercase; border-bottom: 1px solid #334155; z-index: 10;">
+                    <table class="preview-table" style="width: 100%;">
+                        <thead>
                             <tr>
-                                <th style="padding: 10px; background-color: #0f172a;">Column Name</th>
-                                <th style="padding: 10px; background-color: #0f172a;">Data Type</th>
-                                <th style="padding: 10px; background-color: #0f172a;">Sample Non-Null #1</th>
-                                <th style="padding: 10px; background-color: #0f172a;">Sample Non-Null #2</th>
-                                <th style="padding: 10px; background-color: #0f172a;">Sample Non-Null #3</th>
+                                <th style="padding: 10px;">Column Name</th>
+                                <th style="padding: 10px;">Data Type</th>
+                                <th style="padding: 10px;">Sample Non-Null #1</th>
+                                <th style="padding: 10px;">Sample Non-Null #2</th>
+                                <th style="padding: 10px;">Sample Non-Null #3</th>
                             </tr>
                         </thead>
-                        <tbody id="{uid}_tableBody" style="font-family: monospace; background-color: #0f172a;">
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <div id="{uid}_pane_preview" class="{uid}_pane" style="display: none;">
-            <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 14px;">
-                
-                <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px;">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Column Selection:</span>
-                        <span id="{uid}_selectedCountBadge" style="font-size: 11px; font-family: monospace; background: #0369a1; color: #e0f2fe; padding: 3px 8px; border-radius: 4px; font-weight: 600;">0 visible</span>
-                    </div>
-                    <div>
-                        <input type="text" id="{uid}_rowSearchInput" placeholder="Search preview rows..." 
-                               style="background: #0f172a; color: white; font-size: 12px; border: 1px solid #475569; border-radius: 6px; padding: 6px 12px; width: 220px; outline: none;">
-                    </div>
-                </div>
-
-                <div style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 10px; margin-bottom: 14px;">
-                    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; border-bottom: 1px solid #1e293b; padding-bottom: 8px;">
-                        <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 240px;">
-                            <input type="text" id="{uid}_colFilterSearch" placeholder="🔍 Search columns..." 
-                                   style="background: #1e293b; color: #38bdf8; font-size: 12px; border: 1px solid #475569; border-radius: 5px; padding: 5px 10px; width: 100%; max-width: 260px; outline: none;">
-                            <button type="button" id="{uid}_btnSelectFiltered" style="background: #334155; color: #cbd5e1; border: 1px solid #475569; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; white-space: nowrap;">Check All</button>
-                            <button type="button" id="{uid}_btnUncheckFiltered" style="background: #334155; color: #cbd5e1; border: 1px solid #475569; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; white-space: nowrap;">Clear All</button>
-                        </div>
-                        <div>
-                            <button type="button" id="{uid}_btnApplyCols" style="background: linear-gradient(135deg, #0891b2, #0284c7); color: white; font-weight: 600; border: none; padding: 5px 14px; border-radius: 5px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 5px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);">
-                                <span>✓ Apply Columns</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div id="{uid}_colChecklistContainer" style="display: flex; flex-wrap: wrap; gap: 8px; max-height: 110px; overflow-y: auto; padding: 4px;">
-                    </div>
-                </div>
-
-                <div style="max-height: 420px; overflow: auto; border: 1px solid #334155; border-radius: 6px; background-color: #0f172a;">
-                    <table id="{uid}_previewTable" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; font-family: monospace; background-color: #0f172a;">
-                        <thead style="position: sticky; top: 0; background-color: #0f172a; color: #94a3b8; text-transform: uppercase; border-bottom: 1px solid #334155; z-index: 10;">
-                            <tr id="{uid}_previewTheadRow"></tr>
-                        </thead>
-                        <tbody id="{uid}_previewTbody" style="background-color: #0f172a;"></tbody>
+                        <tbody id="{uid}_inspectorTableBody"></tbody>
                     </table>
                 </div>
             </div>
@@ -184,7 +544,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
                             <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                         </button>
                     </div>
-                    <pre style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; font-size: 12px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code># Parentheses () are mandatory around each clause
+                    <pre style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; font-size: 12px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code># Parentheses () are mandatory around each condition
 df.filter(
     (pl.col("age") >= 25) &
     (pl.col("status") == "Active") &
@@ -194,7 +554,7 @@ df.filter(
 
                 <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                        <span style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">2. Dynamic Lists & String Matching</span>
+                        <span style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">2. Dynamic Lists & String Regex</span>
                         <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 5px; padding: 4px 6px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center; justify-content: center;">
                             <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                         </button>
@@ -307,8 +667,7 @@ df.with_columns(
                             <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                         </button>
                     </div>
-                    <pre style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; font-size: 12px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code># Note: regex escapes handled cleanly
-df.with_columns(
+                    <pre style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; font-size: 12px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code>df.with_columns(
     domain=pl.col("email").str.extract(r"@([\\w\\.]+)", 1),
     amount_num=pl.col("amount_str").cast(pl.Float64)
 )</code></pre>
@@ -342,25 +701,14 @@ with pl.Config(tbl_rows=100, tbl_cols=50, fmt_str_lengths=100):
     <script>
     (function() {{
         var meta = {metadata_json};
-        var root = document.getElementById("{uid}_root");
-        var selector = document.getElementById("{uid}_dfSelector");
-        var shapeBadge = document.getElementById("{uid}_shapeBadge");
-        var tbody = document.getElementById("{uid}_tableBody");
-        var searchInput = document.getElementById("{uid}_searchInput");
+        var root = document.getElementById("{uid}_container");
+        var inspectorSelector = document.getElementById("{uid}_inspectorDfSelector");
+        var inspectorShapeBadge = document.getElementById("{uid}_inspectorShapeBadge");
+        var inspectorTbody = document.getElementById("{uid}_inspectorTableBody");
+        var inspectorSearchInput = document.getElementById("{uid}_inspectorSearchInput");
 
-        var previewTheadRow = document.getElementById("{uid}_previewTheadRow");
-        var previewTbody = document.getElementById("{uid}_previewTbody");
-        var colChecklistContainer = document.getElementById("{uid}_colChecklistContainer");
-        var colFilterSearch = document.getElementById("{uid}_colFilterSearch");
-        var rowSearchInput = document.getElementById("{uid}_rowSearchInput");
-        var selectedCountBadge = document.getElementById("{uid}_selectedCountBadge");
-        var btnApplyCols = document.getElementById("{uid}_btnApplyCols");
+        var tabs = ["preview", "inspector", "filter", "freq", "manip", "options"];
 
-        var pendingSelectedCols = new Set();
-        var appliedCols = new Set();
-        var tabs = ["inspector", "preview", "filter", "freq", "manip", "options"];
-
-        // Format sample values (High contrast for actual data, dim for nulls)
         function formatSample(val) {{
             if (val === "None" || val === "null" || val === null || val === undefined) {{
                 return '<span style="color: #64748b !important; font-style: italic;">null</span>';
@@ -368,7 +716,7 @@ with pl.Config(tbl_rows=100, tbl_cols=50, fmt_str_lengths=100):
             return '<span style="color: #ffffff !important; font-weight: 500;">' + val + '</span>';
         }}
 
-        // Setup Tab Click Listeners
+        // Setup Tab Navigation
         tabs.forEach(function(t) {{
             var btn = document.getElementById("{uid}_btn_" + t);
             if (!btn) return;
@@ -393,7 +741,7 @@ with pl.Config(tbl_rows=100, tbl_cols=50, fmt_str_lengths=100):
             }};
         }});
 
-        // Setup Icon-Only Copy Buttons
+        // Copy Button Click Handlers
         var copyBtns = root.querySelectorAll(".{uid}_copy_btn");
         copyBtns.forEach(function(btn) {{
             btn.onclick = function() {{
@@ -413,13 +761,13 @@ with pl.Config(tbl_rows=100, tbl_cols=50, fmt_str_lengths=100):
             }};
         }});
 
-        // Populate DataFrames Dropdown
-        selector.innerHTML = '';
+        // Populate Inspector Dropdown
+        inspectorSelector.innerHTML = '';
         var dfNames = Object.keys(meta);
         if (dfNames.length === 0) {{
-            selector.innerHTML = '<option value="">No DataFrames in Memory</option>';
-            shapeBadge.innerText = '0 DataFrames';
-            tbody.innerHTML = '<tr><td colspan="5" style="padding: 16px; text-align: center; color: #64748b; background-color: #0f172a !important;">No active Polars DataFrames detected in this notebook session.</td></tr>';
+            inspectorSelector.innerHTML = '<option value="">No DataFrames</option>';
+            inspectorShapeBadge.innerText = '0 DataFrames';
+            inspectorTbody.innerHTML = '<tr><td colspan="5" style="padding: 16px; text-align: center; color: #64748b;">No active Polars DataFrames detected.</td></tr>';
             return;
         }}
 
@@ -427,202 +775,71 @@ with pl.Config(tbl_rows=100, tbl_cols=50, fmt_str_lengths=100):
             var opt = document.createElement('option');
             opt.value = name;
             opt.textContent = name;
-            selector.appendChild(opt);
+            inspectorSelector.appendChild(opt);
         }});
 
-        // Render Inspector Table
-        function renderRows() {{
-            var dfName = selector.value;
+        function renderInspectorRows() {{
+            var dfName = inspectorSelector.value;
             if (!dfName || !meta[dfName]) return;
             
             var dfInfo = meta[dfName];
-            shapeBadge.innerText = dfInfo.shape;
+            inspectorShapeBadge.innerText = dfInfo.shape;
             
             var rowsHtml = '';
             dfInfo.columns.forEach(function(c) {{
-                rowsHtml += '<tr style="border-bottom: 1px solid #334155; background-color: #0f172a !important;">' +
-                    '<td style="padding: 8px 10px; font-weight: bold; color: #38bdf8 !important; background-color: #0f172a !important;">' + c.col + '</td>' +
-                    '<td style="padding: 8px 10px; background-color: #0f172a !important;"><span style="background: #334155; color: #67e8f9 !important; padding: 2px 6px; border-radius: 4px; font-size: 11px;">' + c.dtype + '</span></td>' +
-                    '<td style="padding: 8px 10px; background-color: #0f172a !important;">' + formatSample(c.sample1) + '</td>' +
-                    '<td style="padding: 8px 10px; background-color: #0f172a !important;">' + formatSample(c.sample2) + '</td>' +
-                    '<td style="padding: 8px 10px; background-color: #0f172a !important;">' + formatSample(c.sample3) + '</td>' +
+                rowsHtml += '<tr>' +
+                    '<td style="font-weight: bold; color: #38bdf8 !important;">' + c.col + '</td>' +
+                    '<td><span style="background: #334155; color: #67e8f9 !important; padding: 2px 6px; border-radius: 4px; font-size: 11px;">' + c.dtype + '</span></td>' +
+                    '<td>' + formatSample(c.sample1) + '</td>' +
+                    '<td>' + formatSample(c.sample2) + '</td>' +
+                    '<td>' + formatSample(c.sample3) + '</td>' +
                 '</tr>';
             }});
-            tbody.innerHTML = rowsHtml;
-            initPreviewTab(dfInfo);
+            inspectorTbody.innerHTML = rowsHtml;
         }}
 
-        // Initialize SAS Viya Style Quick Preview Tab
-        function initPreviewTab(dfInfo) {{
-            // Default: select up to first 8 columns
-            pendingSelectedCols = new Set(dfInfo.col_names.slice(0, 8));
-            appliedCols = new Set(pendingSelectedCols);
-            renderChecklist(dfInfo);
-            renderPreviewTable(dfInfo);
-        }}
+        inspectorSelector.onchange = renderInspectorRows;
 
-        function renderChecklist(dfInfo) {{
-            colChecklistContainer.innerHTML = '';
-            var filterTxt = colFilterSearch.value.toLowerCase();
-            var matches = 0;
-
-            dfInfo.col_names.forEach(function(col) {{
-                if (filterTxt && !col.toLowerCase().includes(filterTxt)) return;
-                matches++;
-                var isChecked = pendingSelectedCols.has(col);
-                var dtype = dfInfo.col_types[col] || '';
-
-                var label = document.createElement('label');
-                label.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 5px; font-size: 11px; cursor: pointer; font-family: monospace; background: ' + 
-                    (isChecked ? '#1e293b;' : '#0f172a;') + ' border: 1px solid ' + (isChecked ? '#0284c7;' : '#334155;') + ' color: #e2e8f0; user-select: none;';
-
-                var chk = document.createElement('input');
-                chk.type = 'checkbox';
-                chk.checked = isChecked;
-                chk.style.cssText = 'cursor: pointer; accent-color: #06b6d4;';
-
-                chk.onchange = function() {{
-                    if (this.checked) {{
-                        pendingSelectedCols.add(col);
-                    }} else {{
-                        pendingSelectedCols.delete(col);
-                    }}
-                    label.style.background = this.checked ? '#1e293b' : '#0f172a';
-                    label.style.borderColor = this.checked ? '#0284c7' : '#334155';
-                }};
-
-                label.appendChild(chk);
-
-                var spanCol = document.createElement('span');
-                spanCol.style.cssText = 'font-weight: 600; color: ' + (isChecked ? '#38bdf8' : '#cbd5e1') + ';';
-                spanCol.textContent = col;
-                label.appendChild(spanCol);
-
-                var spanType = document.createElement('span');
-                spanType.style.cssText = 'font-size: 10px; color: #64748b;';
-                spanType.textContent = '(' + dtype + ')';
-                label.appendChild(spanType);
-
-                colChecklistContainer.appendChild(label);
-            }});
-
-            if (matches === 0) {{
-                colChecklistContainer.innerHTML = '<span style="font-size: 11px; color: #64748b; padding: 6px;">No columns matching "' + colFilterSearch.value + '"</span>';
-            }}
-        }}
-
-        function renderPreviewTable(dfInfo) {{
-            selectedCountBadge.innerText = appliedCols.size + ' visible';
-            var colIndices = [];
-            var thHtml = '<th style="padding: 8px 10px; background-color: #0f172a !important; color: #64748b !important;">#</th>';
-            
-            dfInfo.col_names.forEach(function(col, idx) {{
-                if (appliedCols.has(col)) {{
-                    colIndices.push(idx);
-                    thHtml += '<th style="padding: 8px 10px; color: #38bdf8 !important; background-color: #0f172a !important; border-left: 1px solid #334155;">' + col + '</th>';
-                }}
-            }});
-            previewTheadRow.innerHTML = thHtml;
-
-            if (colIndices.length === 0) {{
-                previewTbody.innerHTML = '<tr><td colspan="100" style="padding: 20px; text-align: center; color: #94a3b8; background-color: #0f172a !important;">No columns selected. Check columns above and click <b style="color: #38bdf8;">"✓ Apply Columns"</b>.</td></tr>';
-                return;
-            }}
-
-            var rowQuery = rowSearchInput.value.toLowerCase();
-            var tbHtml = '';
-            
-            dfInfo.preview_data.forEach(function(row, rIdx) {{
-                var rowMatch = false;
-                var cellsHtml = '';
-                
-                colIndices.forEach(function(cIdx) {{
-                    var val = row[cIdx];
-                    if (!rowQuery || val.toLowerCase().includes(rowQuery)) rowMatch = true;
-                    cellsHtml += '<td style="padding: 6px 10px; border-left: 1px solid #334155; color: #ffffff !important; background-color: #0f172a !important; white-space: nowrap;">' + val + '</td>';
-                }});
-
-                if (!rowQuery || rowMatch) {{
-                    tbHtml += '<tr style="border-bottom: 1px solid #334155; background-color: #0f172a !important;">' +
-                        '<td style="padding: 6px 10px; color: #64748b !important; background-color: #0f172a !important;">' + (rIdx + 1) + '</td>' + cellsHtml +
-                    '</tr>';
-                }}
-            }});
-            previewTbody.innerHTML = tbHtml || '<tr><td colspan="100" style="padding: 16px; text-align: center; color: #64748b; background-color: #0f172a !important;">No matching preview records found.</td></tr>';
-        }}
-
-        // Search in Column Checklist
-        colFilterSearch.onkeyup = function() {{
-            var dfInfo = meta[selector.value];
-            if (dfInfo) renderChecklist(dfInfo);
-        }};
-
-        // Check All (matches current search)
-        document.getElementById("{uid}_btnSelectFiltered").onclick = function() {{
-            var dfInfo = meta[selector.value];
-            if (!dfInfo) return;
-            var filterTxt = colFilterSearch.value.toLowerCase();
-            dfInfo.col_names.forEach(function(c) {{
-                if (!filterTxt || c.toLowerCase().includes(filterTxt)) {{
-                    pendingSelectedCols.add(c);
-                }}
-            }});
-            renderChecklist(dfInfo);
-        }};
-
-        // Clear All (matches current search)
-        document.getElementById("{uid}_btnUncheckFiltered").onclick = function() {{
-            var dfInfo = meta[selector.value];
-            if (!dfInfo) return;
-            var filterTxt = colFilterSearch.value.toLowerCase();
-            dfInfo.col_names.forEach(function(c) {{
-                if (!filterTxt || c.toLowerCase().includes(filterTxt)) {{
-                    pendingSelectedCols.delete(c);
-                }}
-            }});
-            renderChecklist(dfInfo);
-        }};
-
-        // Apply Columns Button
-        btnApplyCols.onclick = function() {{
-            var dfInfo = meta[selector.value];
-            if (!dfInfo) return;
-            appliedCols = new Set(pendingSelectedCols);
-            renderPreviewTable(dfInfo);
-            
-            // Visual pulse feedback on button
-            var origBg = btnApplyCols.style.background;
-            btnApplyCols.style.background = '#059669';
-            setTimeout(function() {{
-                btnApplyCols.style.background = origBg;
-            }}, 600);
-        }};
-
-        // Row search within table
-        rowSearchInput.onkeyup = function() {{
-            var dfInfo = meta[selector.value];
-            if (dfInfo) renderPreviewTable(dfInfo);
-        }};
-
-        selector.onchange = renderRows;
-
-        // Inspector Column Search Filter
-        searchInput.onkeyup = function() {{
-            var query = searchInput.value.toLowerCase();
-            var rows = tbody.getElementsByTagName('tr');
+        inspectorSearchInput.onkeyup = function() {{
+            var query = inspectorSearchInput.value.toLowerCase();
+            var rows = inspectorTbody.getElementsByTagName('tr');
             for (var i = 0; i < rows.length; i++) {{
                 var txt = rows[i].innerText.toLowerCase();
                 rows[i].style.display = txt.includes(query) ? '' : 'none';
             }}
         }};
 
-        renderRows();
+        renderInspectorRows();
     }})();
     </script>
     """
+
+    # Assemble UI Components
+    display(HTML(toolkit_html))
     
+    # Inject Quick Preview Widget directly into the active pane
+    display(quick_preview_box)
+
     if save_html:
         with open(filename, "w", encoding="utf-8") as f:
-            f.write(html_content)
+            f.write(toolkit_html)
+```
 
-    display(HTML(html_content))
+---
+
+### How to Run in Jupyter:
+
+```python
+import polars as pl
+from polars_helper import launch_polars_helper
+
+# Example: 100,000 row dataset to test instant backend filtering
+df_test = pl.DataFrame({
+    "ID": list(range(100000)),
+    "Name": [f"User_{i}" for i in range(100000)],
+    "Zone": ["North", "South", "East", "West"] * 25000,
+    "Salary": [45000.0 + (i % 50000) for i in range(100000)],
+    "Status": ["Active", "Pending", "Suspended"] * 33333 + ["Active"]
+})
+
+launch_polars_helper(preview_rows=50)
