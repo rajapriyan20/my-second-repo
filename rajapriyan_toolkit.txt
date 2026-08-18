@@ -6,15 +6,16 @@ import ipywidgets as widgets
 import polars as pl
 from IPython.display import HTML, display
 
-TOOLKIT_VERSION = "v2.4"
+TOOLKIT_VERSION = "v2.5"
 
 def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filename: str = "polars_jupyter_helper.html"):
     """
-    Rajapriyan Coding Toolkit (v2.4):
-    - Full-dataset Polars query execution in Python (handles millions of rows in ms)
-    - 100% Offline Deep Slate/Blue Theme with Zero White Background Bleeding
-    - Fixed 150px Column Width with '...' Ellipsis & Tested Mouse-Draggable Resizing
-    - In-Notebook Collapsible Launcher Bar
+    Rajapriyan Coding Toolkit (v2.5):
+    - Full-Dataset Polars Query Engine (handles millions of rows in ms)
+    - 100% Dark Blue & Slate Theme (Zero white background bleeding)
+    - Tested & Working Excel/SAS Viya Mouse-Draggable Column Resizing
+    - Fixed 150px default width with '...' truncation and hover tooltips
+    - Collapsible In-Notebook Launcher
     """
     # 1. Discover Polars DataFrames in active Jupyter interactive session
     try:
@@ -31,7 +32,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
 
     uid = f"pl_{uuid.uuid4().hex[:8]}"
 
-    # Extract metadata for Inspector & Quick Preview
+    # Extract metadata for Inspector & Reference Cards
     dfs_metadata = {}
     for var_name, obj in dfs_dict.items():
         cols_info = []
@@ -65,41 +66,42 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
 
     metadata_json = json.dumps(dfs_metadata)
 
-    # 2. Master CSS Styles (Anti-Invisibility, Deep Blue Theming & Draggable Resizing)
+    # 2. Master CSS Styles (Forces Dark Blue Everywhere & Enables Draggable Handles)
     css_styles = f"""
     <style>
-        #{uid}_root, #{uid}_preview_widget_wrapper {{
-            background-color: #0f172a !important;
+        /* Force Root Dark Palette across all Jupyter and ipywidgets wrappers */
+        #{uid}_root,
+        .{uid}_wrapper,
+        .{uid}_wrapper .widget-box,
+        .{uid}_wrapper .widget-vbox,
+        .{uid}_wrapper .widget-hbox,
+        .{uid}_wrapper .widget-inline-hbox,
+        .{uid}_wrapper .jupyter-widgets {{
+            background-color: #1e293b !important;
             color: #f8fafc !important;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-            border-radius: 12px;
-            border: 1px solid #334155;
-            padding: 16px;
-            margin: 8px 0;
-            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5);
+            border-color: #334155 !important;
         }}
 
-        /* Wipe out any Jupyter default light/white widget backgrounds */
-        #{uid}_preview_widget_wrapper,
-        #{uid}_preview_widget_wrapper .jupyter-widgets,
-        #{uid}_preview_widget_wrapper .widget-box,
-        #{uid}_preview_widget_wrapper .widget-vbox,
-        #{uid}_preview_widget_wrapper .widget-hbox {{
-            background-color: transparent !important;
-            color: #f8fafc !important;
+        .{uid}_inner_card {{
+            background-color: #0f172a !important;
+            border: 1px solid #334155 !important;
+            border-radius: 8px !important;
+            padding: 8px !important;
         }}
-        #{uid}_preview_widget_wrapper .widget-label {{
+
+        .{uid}_wrapper .widget-label {{
             color: #94a3b8 !important;
             font-size: 11px !important;
             font-weight: 700 !important;
             text-transform: uppercase !important;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
         }}
 
-        /* Form Inputs & Dropdowns */
-        #{uid}_preview_widget_wrapper .widget-dropdown select,
-        #{uid}_preview_widget_wrapper .widget-text input,
-        #{uid}_root select, #{uid}_root input[type="text"] {{
+        /* Dropdowns & Text Inputs */
+        .{uid}_wrapper select,
+        .{uid}_wrapper input[type="text"],
+        #{uid}_root select,
+        #{uid}_root input[type="text"] {{
             background-color: #0f172a !important;
             color: #38bdf8 !important;
             border: 1px solid #475569 !important;
@@ -107,24 +109,37 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
             font-size: 12px !important;
             padding: 4px 8px !important;
-            outline: none;
+            outline: none !important;
         }}
-        #{uid}_preview_widget_wrapper .widget-dropdown select:focus,
-        #{uid}_preview_widget_wrapper .widget-text input:focus {{
+        .{uid}_wrapper select:focus,
+        .{uid}_wrapper input[type="text"]:focus {{
             border-color: #06b6d4 !important;
+            box-shadow: 0 0 0 1px #06b6d4 !important;
+        }}
+
+        /* Checkbox label pills in column selection */
+        .{uid}_wrapper .widget-checkbox {{
+            background-color: #0f172a !important;
+            color: #cbd5e1 !important;
+            font-family: ui-monospace, monospace !important;
+            font-size: 11px !important;
+            margin: 1px 6px 1px 0px !important;
+        }}
+        .{uid}_wrapper .widget-checkbox label span {{
+            color: #cbd5e1 !important;
         }}
 
         /* Buttons Styling */
-        #{uid}_preview_widget_wrapper .widget-button button {{
+        .{uid}_wrapper .widget-button button {{
             border-radius: 6px !important;
             font-size: 12px !important;
             font-weight: 600 !important;
             padding: 4px 12px !important;
-            transition: all 0.15s ease !important;
             border: 1px solid transparent !important;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
         }}
 
-        /* Fixed-Width Resizable Table Geometry */
+        /* Resizable Table Layout with Fixed Widths & Ellipsis */
         table.{uid}_res_table {{
             border-collapse: separate !important;
             border-spacing: 0 !important;
@@ -143,23 +158,25 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             text-transform: uppercase !important;
             border-bottom: 2px solid #334155 !important;
             border-right: 1px solid #334155 !important;
-            padding: 8px 10px !important;
+            padding: 8px 12px !important;
             text-align: left !important;
             user-select: none !important;
             z-index: 10 !important;
             overflow: hidden !important;
             text-overflow: ellipsis !important;
             white-space: nowrap !important;
+            box-sizing: border-box !important;
         }}
         table.{uid}_res_table td {{
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
             font-size: 12px !important;
-            padding: 6px 10px !important;
+            padding: 6px 12px !important;
             border-bottom: 1px solid #293548 !important;
             border-right: 1px solid #293548 !important;
             overflow: hidden !important;
             text-overflow: ellipsis !important;
             white-space: nowrap !important;
+            box-sizing: border-box !important;
         }}
         table.{uid}_res_table tbody tr.row-odd td {{
             background-color: #0f172a !important;
@@ -174,20 +191,21 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             color: #ffffff !important;
         }}
 
-        /* Column Resizer Handle */
+        /* Column Resizer Handle (Draggable Grip) */
         .{uid}_resizer {{
             position: absolute;
             top: 0;
             right: 0;
-            width: 7px;
+            width: 10px;
             height: 100%;
             cursor: col-resize;
             user-select: none;
             background: transparent;
-            z-index: 25;
+            z-index: 30;
         }}
         .{uid}_resizer:hover {{
-            background: #06b6d4;
+            background-color: #06b6d4;
+            opacity: 0.8;
         }}
 
         /* Navigation Tab Buttons */
@@ -233,14 +251,14 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
     )
     
     shape_label = widgets.HTML(
-        value=f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape'] if current_df_name else '0 rows'}</span>"
+        value=f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:5px 10px; border-radius:6px; font-size:12px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape'] if current_df_name else '0 rows'}</span>"
     )
 
     col_search_input = widgets.Text(placeholder="🔍 Search columns...", layout=widgets.Layout(width='200px'))
     btn_select_all_cols = widgets.Button(description="Check All", layout=widgets.Layout(width='85px'))
     btn_clear_all_cols = widgets.Button(description="Clear All", layout=widgets.Layout(width='85px'))
     btn_apply_cols = widgets.Button(description="✓ Apply Columns", button_style='info', layout=widgets.Layout(width='130px'))
-    col_checklist_box = widgets.HBox([], layout=widgets.Layout(flex_flow='row wrap', max_height='75px', overflow='auto', padding='6px', border='1px solid #334155', border_radius='6px', background_color='#0f172a'))
+    col_checklist_box = widgets.HBox([], layout=widgets.Layout(flex_flow='row wrap', max_height='75px', overflow='auto', padding='6px', background_color='#0f172a'))
 
     btn_add_filter = widgets.Button(description="+ Add Column Filter", button_style='primary', layout=widgets.Layout(width='160px'))
     btn_run_filter = widgets.Button(description="⚡ Run Polars Filter", button_style='success', layout=widgets.Layout(width='160px'))
@@ -265,7 +283,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
                 value=(col in pending_cols),
                 description=f"{col} ({df_obj[col].dtype})",
                 indent=False,
-                layout=widgets.Layout(width='auto', margin='1px 8px 1px 0px')
+                layout=widgets.Layout(width='auto', margin='1px 6px 1px 0px')
             )
             
             def make_chk_handler(c_name):
@@ -460,16 +478,22 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         (function() {{
             var table = document.getElementById("{table_id}");
             if (!table) return;
-            var ths = table.querySelectorAll("th");
+            var ths = table.querySelectorAll("thead th");
             
             ths.forEach(function(th, colIdx) {{
+                if (colIdx === 0) return; // Skip row number col
                 var resizer = th.querySelector(".{uid}_resizer");
                 if (!resizer) return;
                 
+                var startX, startWidth;
+
                 resizer.addEventListener("mousedown", function(e) {{
-                    var startX = e.pageX;
-                    var startWidth = th.offsetWidth;
-                    resizer.style.background = "#06b6d4";
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    startX = e.pageX;
+                    startWidth = th.offsetWidth;
+                    resizer.style.backgroundColor = "#06b6d4";
 
                     function onMouseMove(e) {{
                         var newWidth = Math.max(50, startWidth + (e.pageX - startX));
@@ -477,7 +501,6 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
                         th.style.minWidth = newWidth + "px";
                         th.style.maxWidth = newWidth + "px";
                         
-                        // Synchronize table cell widths in fixed table
                         var cells = table.querySelectorAll("tbody tr td:nth-child(" + (colIdx + 1) + ")");
                         cells.forEach(function(td) {{
                             td.style.width = newWidth + "px";
@@ -487,15 +510,13 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
                     }}
 
                     function onMouseUp() {{
-                        resizer.style.background = "transparent";
-                        document.removeEventListener("mousemove", onMouseMove);
-                        document.removeEventListener("mouseup", onMouseUp);
+                        resizer.style.backgroundColor = "transparent";
+                        window.removeEventListener("mousemove", onMouseMove);
+                        window.removeEventListener("mouseup", onMouseUp);
                     }}
 
-                    document.addEventListener("mousemove", onMouseMove);
-                    document.addEventListener("mouseup", onMouseUp);
-                    e.preventDefault();
-                    e.stopPropagation();
+                    window.addEventListener("mousemove", onMouseMove);
+                    window.addEventListener("mouseup", onMouseUp);
                 }});
             }});
         }})();
@@ -512,7 +533,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         current_df_name = change['new']
         if current_df_name and current_df_name in dfs_dict:
             df_obj = dfs_dict[current_df_name]
-            shape_label.value = f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape']}</span>"
+            shape_label.value = f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:5px 10px; border-radius:6px; font-size:12px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape']}</span>"
             pending_cols.clear()
             pending_cols.update(df_obj.columns[:8])
             applied_columns.clear()
@@ -572,7 +593,30 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         applied_columns.update(pending_cols)
         update_col_checkboxes()
 
-    # Construct the Quick Preview Tab Layout (Deep Slate/Blue Theming)
+    # Construct the Quick Preview Tab Layout with Class Hook
+    col_section_box = widgets.VBox([
+        widgets.HBox([
+            widgets.HTML("<span style='font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase;'>Columns:</span>"),
+            col_search_input,
+            btn_select_all_cols,
+            btn_clear_all_cols,
+            btn_apply_cols
+        ], layout=widgets.Layout(align_items='center', gap='6px', margin='0 0 5px 0')),
+        col_checklist_box
+    ], layout=widgets.Layout(margin='0 0 8px 0'))
+    col_section_box.add_class(f"{uid}_inner_card")
+
+    filter_section_box = widgets.VBox([
+        widgets.HBox([
+            widgets.HTML("<span style='font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase;'>Parallel Column Filters:</span>"),
+            btn_add_filter,
+            btn_run_filter,
+            btn_reset_filters
+        ], layout=widgets.Layout(align_items='center', gap='6px', margin='0 0 6px 0')),
+        filter_rows_container
+    ], layout=widgets.Layout(margin='0 0 8px 0'))
+    filter_section_box.add_class(f"{uid}_inner_card")
+
     quick_preview_box = widgets.VBox([
         # Header toolbar row
         widgets.HBox([
@@ -580,35 +624,14 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             shape_label
         ], layout=widgets.Layout(align_items='center', margin='0 0 8px 0', width='100%')),
         
-        # Compact Column selection box
-        widgets.VBox([
-            widgets.HBox([
-                widgets.HTML("<span style='font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase;'>Columns:</span>"),
-                col_search_input,
-                btn_select_all_cols,
-                btn_clear_all_cols,
-                btn_apply_cols
-            ], layout=widgets.Layout(align_items='center', gap='6px', margin='0 0 5px 0')),
-            col_checklist_box
-        ], layout=widgets.Layout(background_color='#0f172a', padding='8px', border='1px solid #334155', border_radius='8px', margin='0 0 8px 0')),
-        
-        # Parallel Column Filters
-        widgets.VBox([
-            widgets.HBox([
-                widgets.HTML("<span style='font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase;'>Parallel Column Filters:</span>"),
-                btn_add_filter,
-                btn_run_filter,
-                btn_reset_filters
-            ], layout=widgets.Layout(align_items='center', gap='6px', margin='0 0 6px 0')),
-            filter_rows_container
-        ], layout=widgets.Layout(background_color='#0f172a', padding='8px', border='1px solid #334155', border_radius='8px', margin='0 0 8px 0')),
-        
+        col_section_box,
+        filter_section_box,
         status_code_box,
         preview_output
-    ], layout=widgets.Layout(padding='12px', background_color='#1e293b', border_radius='10px', border='1px solid #334155'))
+    ], layout=widgets.Layout(padding='12px', border_radius='10px'))
 
     widget_wrapper = widgets.Box([quick_preview_box], layout=widgets.Layout(display='block'))
-    widget_wrapper.add_class(f"{uid}_widget_pane")
+    widget_wrapper.add_class(f"{uid}_wrapper")
 
     # Initial table render
     render_polars_table()
@@ -616,7 +639,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
     # 4. Master Toolkit HTML (Inspector, Version Badge & Cheatsheets)
     toolkit_html = f"""
     {css_styles}
-    <div id="{uid}_root">
+    <div id="{uid}_root" style="background-color: #0f172a; padding: 18px; border: 1px solid #334155; border-radius: 12px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5);">
         
         <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #334155; padding-bottom: 14px; margin-bottom: 16px;">
             <div style="display: flex; align-items: center; gap: 8px;">
@@ -879,7 +902,7 @@ with pl.Config(tbl_rows=100, tbl_cols=50, fmt_str_lengths=100):
                 if (targetPane) targetPane.style.display = "block";
 
                 // Synchronize Widget Box Visibility
-                var previewWidget = document.querySelector(".{uid}_widget_pane");
+                var previewWidget = document.querySelector(".{uid}_wrapper");
                 if (previewWidget) {{
                     previewWidget.style.display = (t === "preview") ? "block" : "none";
                 }}
