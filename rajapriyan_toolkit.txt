@@ -6,18 +6,19 @@ import ipywidgets as widgets
 import polars as pl
 from IPython.display import HTML, display
 
-TOOLKIT_VERSION = "v2.5"
+TOOLKIT_VERSION = "v2.5.1"
 
 def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filename: str = "polars_jupyter_helper.html"):
     """
     Rajapriyan Coding Toolkit (v2.5):
-    - Full-Dataset Polars Query Engine (handles millions of rows in ms)
-    - 100% Dark Blue & Slate Theme (Zero white background bleeding)
-    - Tested & Working Excel/SAS Viya Mouse-Draggable Column Resizing
-    - Fixed 150px default width with '...' truncation and hover tooltips
-    - Collapsible In-Notebook Launcher
+    - Full-Dataset Polars Engine (filters millions of rows in ms)
+    - 3-State Column Header Sorting (Asc -> Desc -> Original)
+    - Working Mouse-Draggable Column Resizing with Fixed 150px Width & '...' Ellipsis
+    - Compact Card-Like Column Selection Pills
+    - Robust Tab Switching & Deep Navy/Slate Theme (Zero White Bleed)
+    - Sleek Compact Launcher Button
     """
-    # 1. Discover Polars DataFrames in active Jupyter interactive session
+    # 1. Discover Polars DataFrames in active interactive session
     try:
         from IPython import get_ipython
         ip = get_ipython()
@@ -32,7 +33,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
 
     uid = f"pl_{uuid.uuid4().hex[:8]}"
 
-    # Extract metadata for Inspector & Reference Cards
+    # Extract metadata for Inspector & Quick Preview
     dfs_metadata = {}
     for var_name, obj in dfs_dict.items():
         cols_info = []
@@ -66,31 +67,29 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
 
     metadata_json = json.dumps(dfs_metadata)
 
-    # 2. Master CSS Styles (Forces Dark Blue Everywhere & Enables Draggable Handles)
+    # 2. Master CSS Styles (100% Offline & Dark Themed)
     css_styles = f"""
     <style>
-        /* Force Root Dark Palette across all Jupyter and ipywidgets wrappers */
+        /* Force Root Palette across all wrappers */
         #{uid}_root,
-        .{uid}_wrapper,
-        .{uid}_wrapper .widget-box,
-        .{uid}_wrapper .widget-vbox,
-        .{uid}_wrapper .widget-hbox,
-        .{uid}_wrapper .widget-inline-hbox,
-        .{uid}_wrapper .jupyter-widgets {{
+        #{uid}_widget_pane_container,
+        #{uid}_widget_pane_container .widget-box,
+        #{uid}_widget_pane_container .widget-vbox,
+        #{uid}_widget_pane_container .widget-hbox,
+        #{uid}_widget_pane_container .jupyter-widgets {{
             background-color: #1e293b !important;
             color: #f8fafc !important;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-            border-color: #334155 !important;
         }}
 
-        .{uid}_inner_card {{
+        .{uid}_card_well {{
             background-color: #0f172a !important;
             border: 1px solid #334155 !important;
             border-radius: 8px !important;
-            padding: 8px !important;
+            padding: 8px 10px !important;
         }}
 
-        .{uid}_wrapper .widget-label {{
+        #{uid}_widget_pane_container .widget-label {{
             color: #94a3b8 !important;
             font-size: 11px !important;
             font-weight: 700 !important;
@@ -98,45 +97,89 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         }}
 
         /* Dropdowns & Text Inputs */
-        .{uid}_wrapper select,
-        .{uid}_wrapper input[type="text"],
+        #{uid}_widget_pane_container select,
+        #{uid}_widget_pane_container input[type="text"],
         #{uid}_root select,
         #{uid}_root input[type="text"] {{
             background-color: #0f172a !important;
             color: #38bdf8 !important;
             border: 1px solid #475569 !important;
             border-radius: 6px !important;
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+            font-family: ui-monospace, monospace !important;
             font-size: 12px !important;
-            padding: 4px 8px !important;
+            padding: 5px 8px !important;
             outline: none !important;
         }}
-        .{uid}_wrapper select:focus,
-        .{uid}_wrapper input[type="text"]:focus {{
+        #{uid}_widget_pane_container select:focus,
+        #{uid}_widget_pane_container input[type="text"]:focus {{
             border-color: #06b6d4 !important;
             box-shadow: 0 0 0 1px #06b6d4 !important;
         }}
 
-        /* Checkbox label pills in column selection */
-        .{uid}_wrapper .widget-checkbox {{
-            background-color: #0f172a !important;
-            color: #cbd5e1 !important;
-            font-family: ui-monospace, monospace !important;
-            font-size: 11px !important;
-            margin: 1px 6px 1px 0px !important;
+        /* Tactile Rounded Buttons */
+        .{uid}_btn_primary button {{
+            background: linear-gradient(135deg, #0284c7, #0369a1) !important;
+            color: #ffffff !important;
+            border-radius: 8px !important;
+            font-weight: 600 !important;
+            border: 1px solid #38bdf8 !important;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
         }}
-        .{uid}_wrapper .widget-checkbox label span {{
-            color: #cbd5e1 !important;
+        .{uid}_btn_success button {{
+            background: linear-gradient(135deg, #059669, #047857) !important;
+            color: #ffffff !important;
+            border-radius: 8px !important;
+            font-weight: 600 !important;
+            border: 1px solid #34d399 !important;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
+        }}
+        .{uid}_btn_secondary button {{
+            background: #334155 !important;
+            color: #e2e8f0 !important;
+            border-radius: 8px !important;
+            font-weight: 600 !important;
+            border: 1px solid #475569 !important;
+        }}
+        .{uid}_btn_danger button {{
+            background: linear-gradient(135deg, #e11d48, #be123c) !important;
+            color: #ffffff !important;
+            border-radius: 6px !important;
+            font-weight: 700 !important;
+            border: 1px solid #fb7185 !important;
         }}
 
-        /* Buttons Styling */
-        .{uid}_wrapper .widget-button button {{
-            border-radius: 6px !important;
-            font-size: 12px !important;
-            font-weight: 600 !important;
-            padding: 4px 12px !important;
-            border: 1px solid transparent !important;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+        #{uid}_widget_pane_container .widget-button button:hover {{
+            filter: brightness(1.15) !important;
+            transform: translateY(-1px) !important;
+        }}
+
+        /* Compact Card-Like Column Selection Pills */
+        .{uid}_col_card {{
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            cursor: pointer;
+            font-family: ui-monospace, monospace;
+            background: #1e293b;
+            border: 1px solid #334155;
+            color: #cbd5e1;
+            user-select: none;
+            transition: all 0.15s ease;
+            height: 22px;
+            box-sizing: border-box;
+        }}
+        .{uid}_col_card:hover {{
+            border-color: #0284c7;
+            background: #24344d;
+        }}
+        .{uid}_col_card.active {{
+            background: #082f49 !important;
+            border-color: #0284c7 !important;
+            color: #38bdf8 !important;
+            font-weight: 600;
         }}
 
         /* Resizable Table Layout with Fixed Widths & Ellipsis */
@@ -158,19 +201,22 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             text-transform: uppercase !important;
             border-bottom: 2px solid #334155 !important;
             border-right: 1px solid #334155 !important;
-            padding: 8px 12px !important;
+            padding: 8px 10px !important;
             text-align: left !important;
             user-select: none !important;
             z-index: 10 !important;
             overflow: hidden !important;
             text-overflow: ellipsis !important;
             white-space: nowrap !important;
-            box-sizing: border-box !important;
+            cursor: pointer !important;
+        }}
+        table.{uid}_res_table th:hover {{
+            background-color: #24344d !important;
         }}
         table.{uid}_res_table td {{
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+            font-family: ui-monospace, monospace !important;
             font-size: 12px !important;
-            padding: 6px 12px !important;
+            padding: 6px 10px !important;
             border-bottom: 1px solid #293548 !important;
             border-right: 1px solid #293548 !important;
             overflow: hidden !important;
@@ -191,12 +237,12 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             color: #ffffff !important;
         }}
 
-        /* Column Resizer Handle (Draggable Grip) */
+        /* Column Resizer Handle */
         .{uid}_resizer {{
             position: absolute;
             top: 0;
             right: 0;
-            width: 10px;
+            width: 8px;
             height: 100%;
             cursor: col-resize;
             user-select: none;
@@ -205,10 +251,29 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         }}
         .{uid}_resizer:hover {{
             background-color: #06b6d4;
-            opacity: 0.8;
         }}
 
-        /* Navigation Tab Buttons */
+        /* Sleek Launcher Pill Button */
+        .{uid}_launcher_btn {{
+            background: linear-gradient(135deg, #0284c7, #0f766e) !important;
+            color: #ffffff !important;
+            border: 1px solid rgba(255, 255, 255, 0.2) !important;
+            border-radius: 20px !important;
+            padding: 6px 16px !important;
+            font-size: 12px !important;
+            font-weight: 700 !important;
+            cursor: pointer !important;
+            box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35) !important;
+            transition: all 0.2s ease !important;
+            width: auto !important;
+            max-width: fit-content !important;
+        }}
+        .{uid}_launcher_btn:hover {{
+            background: linear-gradient(135deg, #0369a1, #115e59) !important;
+            transform: translateY(-1px) !important;
+        }}
+
+        /* Tab Buttons */
         .{uid}_tab_btn {{
             background: transparent;
             border: none;
@@ -241,7 +306,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
     applied_columns = set()
     pending_cols = set()
 
-    # Toolbar Controls
+    # Toolbar Controls with Button Styles
     df_dropdown = widgets.Dropdown(
         options=list(dfs_dict.keys()) if dfs_dict else ["No DataFrame Found"],
         value=current_df_name,
@@ -254,50 +319,84 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         value=f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:5px 10px; border-radius:6px; font-size:12px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape'] if current_df_name else '0 rows'}</span>"
     )
 
-    col_search_input = widgets.Text(placeholder="🔍 Search columns...", layout=widgets.Layout(width='200px'))
-    btn_select_all_cols = widgets.Button(description="Check All", layout=widgets.Layout(width='85px'))
-    btn_clear_all_cols = widgets.Button(description="Clear All", layout=widgets.Layout(width='85px'))
-    btn_apply_cols = widgets.Button(description="✓ Apply Columns", button_style='info', layout=widgets.Layout(width='130px'))
-    col_checklist_box = widgets.HBox([], layout=widgets.Layout(flex_flow='row wrap', max_height='75px', overflow='auto', padding='6px', background_color='#0f172a'))
+    col_search_input = widgets.Text(placeholder="🔍 Search columns...", layout=widgets.Layout(width='190px'))
+    
+    btn_select_all_cols = widgets.Button(description="Check All", layout=widgets.Layout(width='80px'))
+    btn_select_all_cols.add_class(f"{uid}_btn_secondary")
+    
+    btn_clear_all_cols = widgets.Button(description="Clear All", layout=widgets.Layout(width='80px'))
+    btn_clear_all_cols.add_class(f"{uid}_btn_secondary")
+    
+    btn_apply_cols = widgets.Button(description="✓ Apply Columns", layout=widgets.Layout(width='130px'))
+    btn_apply_cols.add_class(f"{uid}_btn_primary")
 
-    btn_add_filter = widgets.Button(description="+ Add Column Filter", button_style='primary', layout=widgets.Layout(width='160px'))
-    btn_run_filter = widgets.Button(description="⚡ Run Polars Filter", button_style='success', layout=widgets.Layout(width='160px'))
+    # Column checklist area
+    col_checklist_output = widgets.HTML(value="")
+
+    btn_add_filter = widgets.Button(description="+ Add Column Filter", layout=widgets.Layout(width='160px'))
+    btn_add_filter.add_class(f"{uid}_btn_primary")
+
+    btn_run_filter = widgets.Button(description="⚡ Run Polars Filter", layout=widgets.Layout(width='160px'))
+    btn_run_filter.add_class(f"{uid}_btn_success")
+
     btn_reset_filters = widgets.Button(description="↺ Reset Filters", layout=widgets.Layout(width='115px'))
+    btn_reset_filters.add_class(f"{uid}_btn_secondary")
 
     status_code_box = widgets.HTML(value="")
 
-    def update_col_checkboxes():
+    def update_col_cards_html():
         if not current_df_name or current_df_name not in dfs_dict:
-            col_checklist_box.children = []
+            col_checklist_output.value = ""
             return
         
         df_obj = dfs_dict[current_df_name]
         query = col_search_input.value.strip().lower()
         
-        checkbox_widgets = []
+        cards_html = ""
         for col in df_obj.columns:
             if query and query not in col.lower():
                 continue
             
-            chk = widgets.Checkbox(
-                value=(col in pending_cols),
-                description=f"{col} ({df_obj[col].dtype})",
-                indent=False,
-                layout=widgets.Layout(width='auto', margin='1px 6px 1px 0px')
-            )
+            is_active = col in pending_cols
+            active_cls = "active" if is_active else ""
+            dtype_str = str(df_obj[col].dtype)
             
-            def make_chk_handler(c_name):
-                def handler(change):
-                    if change['new']:
-                        pending_cols.add(c_name)
-                    else:
-                        pending_cols.discard(c_name)
-                return handler
+            cards_html += f"""
+            <span class="{uid}_col_card {active_cls}" data-col="{html.escape(col)}" onclick="
+                var col = this.getAttribute('data-col');
+                var inp = document.getElementById('{uid}_hidden_col_toggle');
+                inp.value = col;
+                inp.dispatchEvent(new Event('change'));
+                this.classList.toggle('active');
+            ">
+                <input type="checkbox" {'checked' if is_active else ''} style="accent-color:#06b6d4; cursor:pointer; pointer-events:none; margin:0 2px 0 0;">
+                <span>{html.escape(col)}</span>
+                <span style="font-size:9px; color:#64748b;">({html.escape(dtype_str)})</span>
+            </span>
+            """
+        
+        col_checklist_output.value = f"""
+        <div style="display:flex; flex-wrap:wrap; gap:4px; max-height:75px; overflow-y:auto; padding:4px; background:#0f172a; border-radius:6px;">
+            {cards_html or '<span style="color:#64748b; font-size:11px;">No columns matched</span>'}
+        </div>
+        """
 
-            chk.observe(make_chk_handler(col), names='value')
-            checkbox_widgets.append(chk)
+    # Hidden toggle listener for card clicks
+    hidden_col_input = widgets.Text(value="", layout=widgets.Layout(display='none'))
+    hidden_col_input.add_class(f"{uid}_hidden_toggle")
 
-        col_checklist_box.children = checkbox_widgets
+    def on_hidden_toggle_change(change):
+        col_name = change['new']
+        if not col_name:
+            return
+        if col_name in pending_cols:
+            pending_cols.discard(col_name)
+        else:
+            pending_cols.add(col_name)
+        hidden_col_input.value = ""  # Reset
+        update_col_cards_html()
+
+    hidden_col_input.observe(on_hidden_toggle_change, names='value')
 
     def create_filter_row():
         if not current_df_name or current_df_name not in dfs_dict:
@@ -323,7 +422,8 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             layout=widgets.Layout(width='160px')
         )
         val_txt = widgets.Text(placeholder="Filter value...", layout=widgets.Layout(width='210px'))
-        btn_del = widgets.Button(description="✕", button_style='danger', layout=widgets.Layout(width='38px'))
+        btn_del = widgets.Button(description="✕", layout=widgets.Layout(width='36px'))
+        btn_del.add_class(f"{uid}_btn_danger")
 
         row_box = widgets.HBox([col_dd, op_dd, val_txt, btn_del], layout=widgets.Layout(margin='2px 0', align_items='center'))
         
@@ -387,7 +487,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
                             code_snippets.append(f'pl.col("{col}") == {num}')
                         except Exception:
                             filter_exprs.append(pl.col(col).cast(pl.Utf8) == val)
-                            code_snippets.append(f'pl.col("{col}").cast(pl.Utf8) == "{val}"')
+                            code_snippets.append(f'pl.col("{col}") == "{val}"')
                     else:
                         filter_exprs.append(pl.col(col).cast(pl.Utf8) == val)
                         code_snippets.append(f'pl.col("{col}") == "{val}"')
@@ -439,7 +539,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         <div style="background:#0f172a; border:1px solid #334155; border-radius:8px; padding:8px 12px; margin:8px 0;">
             <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; margin-bottom:4px;">
                 <span style="color:#34d399; font-weight:600;">⚡ Matched {matched_count:,} of {df_obj.shape[0]:,} rows <span style="color:#94a3b8; font-weight:normal;">({elapsed_ms:.1f} ms)</span></span>
-                <span style="color:#38bdf8; font-family:monospace; font-size:11px;">Showing top {min(preview_rows, matched_count)} rows × {len(cols_to_show)} cols (Drag headers to resize)</span>
+                <span style="color:#38bdf8; font-family:monospace; font-size:11px;">Showing top {min(preview_rows, matched_count)} rows × {len(cols_to_show)} cols (Click header to sort · Drag edge to resize)</span>
             </div>
             <div style="font-family:monospace; font-size:11px; color:#94a3b8; background:#1e293b; padding:5px 10px; border-radius:5px; overflow-x:auto;">
                 <span style="color:#38bdf8;">Code:</span> {html.escape(code_str)}
@@ -448,20 +548,20 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         """
         status_code_box.value = status_html
 
-        # Fixed 150px width columns with Ellipsis & Mouse Drag Resizer
+        # Table Geometry with 3-State Sort & Draggable Width Resizing
         table_id = f"{uid}_res_table_el"
-        th_cells = f'<th style="width:50px; min-width:50px; max-width:50px; text-align:center; position:relative;">#</th>'
+        th_cells = f'<th style="width:50px; min-width:50px; max-width:50px; text-align:center; position:relative; cursor:default;" data-no-sort="true">#</th>'
         for col in cols_to_show:
-            th_cells += f'<th style="width:150px; min-width:150px; max-width:150px; position:relative;" title="{html.escape(col)}">{html.escape(col)}<div class="{uid}_resizer"></div></th>'
+            th_cells += f'<th style="width:150px; min-width:150px; max-width:150px; position:relative;" title="Click to sort (Asc/Desc/Orig) · Drag edge to resize" data-sort="none"><span class="col-title">{html.escape(col)}</span><span class="sort-icon" style="color:#64748b; margin-left:4px; font-size:10px;"></span><div class="{uid}_resizer"></div></th>'
         
         tbody_rows = ""
         for r_idx, row in enumerate(slice_df.iter_rows()):
             row_class = "row-even" if (r_idx % 2 == 0) else "row-odd"
-            td_cells = f'<td style="width:50px; min-width:50px; max-width:50px; text-align:center; color:#64748b;">{r_idx + 1}</td>'
+            td_cells = f'<td style="width:50px; min-width:50px; max-width:50px; text-align:center; color:#64748b;" data-orig-row="{r_idx}">{r_idx + 1}</td>'
             for val in row:
                 v_str = str(val) if val is not None else "null"
                 td_cells += f'<td style="width:150px; min-width:150px; max-width:150px;" title="{html.escape(v_str)}">{html.escape(v_str)}</td>'
-            tbody_rows += f'<tr class="{row_class}">{td_cells}</tr>'
+            tbody_rows += f'<tr class="{row_class}" data-orig-idx="{r_idx}">{td_cells}</tr>'
 
         if matched_count == 0:
             tbody_rows = "<tr><td colspan='100' style='padding:20px; text-align:center; color:#94a3b8;'>No rows matched the filter criteria across the DataFrame.</td></tr>"
@@ -479,20 +579,71 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             var table = document.getElementById("{table_id}");
             if (!table) return;
             var ths = table.querySelectorAll("thead th");
-            
+            var tbody = table.querySelector("tbody");
+
             ths.forEach(function(th, colIdx) {{
-                if (colIdx === 0) return; // Skip row number col
+                if (th.getAttribute('data-no-sort') === 'true') return;
+                
+                // 1. Column Header 3-State Sorting (Asc -> Desc -> Orig)
+                th.addEventListener('click', function(e) {{
+                    if (e.target.classList.contains('{uid}_resizer')) return;
+                    
+                    var currentSort = th.getAttribute('data-sort') || 'none';
+                    var nextSort = (currentSort === 'none') ? 'asc' : ((currentSort === 'asc') ? 'desc' : 'none');
+                    
+                    // Reset all headers
+                    ths.forEach(function(otherTh) {{
+                        otherTh.setAttribute('data-sort', 'none');
+                        var icon = otherTh.querySelector('.sort-icon');
+                        if (icon) icon.innerText = '';
+                    }});
+                    
+                    th.setAttribute('data-sort', nextSort);
+                    var icon = th.querySelector('.sort-icon');
+                    if (icon) {{
+                        icon.innerText = (nextSort === 'asc') ? ' ▲' : ((nextSort === 'desc') ? ' ▼' : '');
+                    }}
+
+                    var rows = Array.from(tbody.querySelectorAll('tr'));
+                    if (rows.length <= 1) return;
+
+                    if (nextSort === 'none') {{
+                        rows.sort(function(a, b) {{
+                            return parseInt(a.getAttribute('data-orig-idx')) - parseInt(b.getAttribute('data-orig-idx'));
+                        }});
+                    }} else {{
+                        rows.sort(function(a, b) {{
+                            var cellA = a.children[colIdx] ? a.children[colIdx].innerText.trim() : '';
+                            var cellB = b.children[colIdx] ? b.children[colIdx].innerText.trim() : '';
+                            
+                            var numA = parseFloat(cellA);
+                            var numB = parseFloat(cellB);
+                            var cmp = 0;
+                            if (!isNaN(numA) && !isNaN(numB)) {{
+                                cmp = numA - numB;
+                            }} else {{
+                                cmp = cellA.localeCompare(cellB);
+                            }}
+                            return (nextSort === 'asc') ? cmp : -cmp;
+                        }});
+                    }}
+
+                    rows.forEach(function(row, rIdx) {{
+                        row.className = (rIdx % 2 === 0) ? 'row-even' : 'row-odd';
+                        tbody.appendChild(row);
+                    }});
+                }});
+
+                // 2. Mouse-Drag Column Resizing
                 var resizer = th.querySelector(".{uid}_resizer");
                 if (!resizer) return;
                 
-                var startX, startWidth;
-
                 resizer.addEventListener("mousedown", function(e) {{
                     e.preventDefault();
                     e.stopPropagation();
 
-                    startX = e.pageX;
-                    startWidth = th.offsetWidth;
+                    var startX = e.pageX;
+                    var startWidth = th.offsetWidth;
                     resizer.style.backgroundColor = "#06b6d4";
 
                     function onMouseMove(e) {{
@@ -540,13 +691,13 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             applied_columns.update(pending_cols)
             active_filters.clear()
             filter_rows_container.children = []
-            update_col_checkboxes()
+            update_col_cards_html()
             render_polars_table()
 
     df_dropdown.observe(on_df_change, names='value')
 
     def on_col_search(change):
-        update_col_checkboxes()
+        update_col_cards_html()
     col_search_input.observe(on_col_search, names='value')
 
     def on_select_all_cols(b):
@@ -555,7 +706,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             for c in dfs_dict[current_df_name].columns:
                 if not q or q in c.lower():
                     pending_cols.add(c)
-            update_col_checkboxes()
+            update_col_cards_html()
     btn_select_all_cols.on_click(on_select_all_cols)
 
     def on_clear_all_cols(b):
@@ -564,7 +715,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             for c in dfs_dict[current_df_name].columns:
                 if not q or q in c.lower():
                     pending_cols.discard(c)
-            update_col_checkboxes()
+            update_col_cards_html()
     btn_clear_all_cols.on_click(on_clear_all_cols)
 
     def on_apply_cols(b):
@@ -591,9 +742,9 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
     if current_df_name and current_df_name in dfs_dict:
         pending_cols.update(dfs_dict[current_df_name].columns[:8])
         applied_columns.update(pending_cols)
-        update_col_checkboxes()
+        update_col_cards_html()
 
-    # Construct the Quick Preview Tab Layout with Class Hook
+    # Construct the Quick Preview Tab Layout
     col_section_box = widgets.VBox([
         widgets.HBox([
             widgets.HTML("<span style='font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase;'>Columns:</span>"),
@@ -602,9 +753,10 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             btn_clear_all_cols,
             btn_apply_cols
         ], layout=widgets.Layout(align_items='center', gap='6px', margin='0 0 5px 0')),
-        col_checklist_box
+        col_checklist_output,
+        hidden_col_input
     ], layout=widgets.Layout(margin='0 0 8px 0'))
-    col_section_box.add_class(f"{uid}_inner_card")
+    col_section_box.add_class(f"{uid}_card_well")
 
     filter_section_box = widgets.VBox([
         widgets.HBox([
@@ -615,7 +767,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         ], layout=widgets.Layout(align_items='center', gap='6px', margin='0 0 6px 0')),
         filter_rows_container
     ], layout=widgets.Layout(margin='0 0 8px 0'))
-    filter_section_box.add_class(f"{uid}_inner_card")
+    filter_section_box.add_class(f"{uid}_card_well")
 
     quick_preview_box = widgets.VBox([
         # Header toolbar row
@@ -631,12 +783,12 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
     ], layout=widgets.Layout(padding='12px', border_radius='10px'))
 
     widget_wrapper = widgets.Box([quick_preview_box], layout=widgets.Layout(display='block'))
-    widget_wrapper.add_class(f"{uid}_wrapper")
+    widget_wrapper.add_class(f"{uid}_widget_pane_container")
 
     # Initial table render
     render_polars_table()
 
-    # 4. Master Toolkit HTML (Inspector, Version Badge & Cheatsheets)
+    # 4. Master Toolkit HTML (Inspector, Tabs, Inline Click Handlers & Cheatsheets)
     toolkit_html = f"""
     {css_styles}
     <div id="{uid}_root" style="background-color: #0f172a; padding: 18px; border: 1px solid #334155; border-radius: 12px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5);">
@@ -649,15 +801,63 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             
             <div style="display: flex; align-items: center; gap: 10px;">
                 <div style="display: flex; gap: 4px; overflow-x: auto; font-size: 13px;">
-                    <button type="button" id="{uid}_btn_preview" class="{uid}_tab_btn tab-active">👁️ Quick Preview</button>
-                    <button type="button" id="{uid}_btn_inspector" class="{uid}_tab_btn">🔬 Metadata Inspector</button>
-                    <button type="button" id="{uid}_btn_filter" class="{uid}_tab_btn">🔍 Multi-Filter</button>
-                    <button type="button" id="{uid}_btn_freq" class="{uid}_tab_btn">📊 Proc Freq</button>
-                    <button type="button" id="{uid}_btn_manip" class="{uid}_tab_btn">🛠️ Column Manip & Rename</button>
-                    <button type="button" id="{uid}_btn_options" class="{uid}_tab_btn">⚙️ Configs</button>
+                    <button type="button" id="{uid}_btn_preview" class="{uid}_tab_btn tab-active" onclick="
+                        var root = document.getElementById('{uid}_root');
+                        root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='3px solid transparent'; b.style.color='#94a3b8'; }});
+                        this.classList.add('tab-active'); this.style.borderBottom='3px solid #06b6d4'; this.style.color='#38bdf8';
+                        root.querySelectorAll('.{uid}_pane').forEach(function(p){{ p.style.display='none'; }});
+                        var w = document.querySelector('.{uid}_widget_pane_container'); if(w) w.style.display='block';
+                    ">👁️ Quick Preview</button>
+                    
+                    <button type="button" id="{uid}_btn_inspector" class="{uid}_tab_btn" onclick="
+                        var root = document.getElementById('{uid}_root');
+                        root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='3px solid transparent'; b.style.color='#94a3b8'; }});
+                        this.classList.add('tab-active'); this.style.borderBottom='3px solid #06b6d4'; this.style.color='#38bdf8';
+                        root.querySelectorAll('.{uid}_pane').forEach(function(p){{ p.style.display='none'; }});
+                        var p = document.getElementById('{uid}_pane_inspector'); if(p) p.style.display='block';
+                        var w = document.querySelector('.{uid}_widget_pane_container'); if(w) w.style.display='none';
+                        var inspSel = document.getElementById('{uid}_inspectorDfSelector');
+                        if(inspSel && inspSel.onchange) inspSel.onchange();
+                    ">🔬 Metadata Inspector</button>
+                    
+                    <button type="button" id="{uid}_btn_filter" class="{uid}_tab_btn" onclick="
+                        var root = document.getElementById('{uid}_root');
+                        root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='3px solid transparent'; b.style.color='#94a3b8'; }});
+                        this.classList.add('tab-active'); this.style.borderBottom='3px solid #06b6d4'; this.style.color='#38bdf8';
+                        root.querySelectorAll('.{uid}_pane').forEach(function(p){{ p.style.display='none'; }});
+                        var p = document.getElementById('{uid}_pane_filter'); if(p) p.style.display='block';
+                        var w = document.querySelector('.{uid}_widget_pane_container'); if(w) w.style.display='none';
+                    ">🔍 Multi-Filter</button>
+                    
+                    <button type="button" id="{uid}_btn_freq" class="{uid}_tab_btn" onclick="
+                        var root = document.getElementById('{uid}_root');
+                        root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='3px solid transparent'; b.style.color='#94a3b8'; }});
+                        this.classList.add('tab-active'); this.style.borderBottom='3px solid #06b6d4'; this.style.color='#38bdf8';
+                        root.querySelectorAll('.{uid}_pane').forEach(function(p){{ p.style.display='none'; }});
+                        var p = document.getElementById('{uid}_pane_freq'); if(p) p.style.display='block';
+                        var w = document.querySelector('.{uid}_widget_pane_container'); if(w) w.style.display='none';
+                    ">📊 Proc Freq</button>
+                    
+                    <button type="button" id="{uid}_btn_manip" class="{uid}_tab_btn" onclick="
+                        var root = document.getElementById('{uid}_root');
+                        root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='3px solid transparent'; b.style.color='#94a3b8'; }});
+                        this.classList.add('tab-active'); this.style.borderBottom='3px solid #06b6d4'; this.style.color='#38bdf8';
+                        root.querySelectorAll('.{uid}_pane').forEach(function(p){{ p.style.display='none'; }});
+                        var p = document.getElementById('{uid}_pane_manip'); if(p) p.style.display='block';
+                        var w = document.querySelector('.{uid}_widget_pane_container'); if(w) w.style.display='none';
+                    ">🛠️ Column Manip & Rename</button>
+                    
+                    <button type="button" id="{uid}_btn_options" class="{uid}_tab_btn" onclick="
+                        var root = document.getElementById('{uid}_root');
+                        root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='3px solid transparent'; b.style.color='#94a3b8'; }});
+                        this.classList.add('tab-active'); this.style.borderBottom='3px solid #06b6d4'; this.style.color='#38bdf8';
+                        root.querySelectorAll('.{uid}_pane').forEach(function(p){{ p.style.display='none'; }});
+                        var p = document.getElementById('{uid}_pane_options'); if(p) p.style.display='block';
+                        var w = document.querySelector('.{uid}_widget_pane_container'); if(w) w.style.display='none';
+                    ">⚙️ Configs</button>
                 </div>
                 
-                <span style="background: #1e293b; color: #38bdf8; font-size: 11px; font-family: monospace; font-weight: 700; padding: 4px 8px; border-radius: 6px; border: 1px solid #334155; letter-spacing: 0.5px;">
+                <span style="background: #1e293b; color: #38bdf8; font-size: 11px; font-family: monospace; font-weight: 700; padding: 4px 8px; border-radius: 6px; border: 1px solid #334155;">
                     {TOOLKIT_VERSION}
                 </span>
             </div>
@@ -866,48 +1066,12 @@ with pl.Config(tbl_rows=100, tbl_cols=50, fmt_str_lengths=100):
         var inspectorTbody = document.getElementById("{uid}_inspectorTableBody");
         var inspectorSearchInput = document.getElementById("{uid}_inspectorSearchInput");
 
-        var tabs = ["preview", "inspector", "filter", "freq", "manip", "options"];
-
         function formatSample(val) {{
             if (val === "None" || val === "null" || val === null || val === undefined) {{
                 return '<span style="color: #64748b !important; font-style: italic;">null</span>';
             }}
             return '<span style="color: #ffffff !important; font-weight: 500;">' + val + '</span>';
         }}
-
-        // Setup Tab Navigation & Widget Visibility Sync
-        tabs.forEach(function(t) {{
-            var btn = document.getElementById("{uid}_btn_" + t);
-            if (!btn) return;
-            btn.onclick = function() {{
-                tabs.forEach(function(other) {{
-                    var otherBtn = document.getElementById("{uid}_btn_" + other);
-                    var otherPane = document.getElementById("{uid}_pane_" + other);
-                    if (otherBtn) {{
-                        otherBtn.classList.remove("tab-active");
-                        otherBtn.style.borderBottom = "3px solid transparent";
-                        otherBtn.style.color = "#94a3b8";
-                        otherBtn.style.fontWeight = "500";
-                    }}
-                    if (otherPane) {{
-                        otherPane.style.display = "none";
-                    }}
-                }});
-                btn.classList.add("tab-active");
-                btn.style.borderBottom = "3px solid #06b6d4";
-                btn.style.color = "#38bdf8";
-                btn.style.fontWeight = "700";
-                
-                var targetPane = document.getElementById("{uid}_pane_" + t);
-                if (targetPane) targetPane.style.display = "block";
-
-                // Synchronize Widget Box Visibility
-                var previewWidget = document.querySelector(".{uid}_wrapper");
-                if (previewWidget) {{
-                    previewWidget.style.display = (t === "preview") ? "block" : "none";
-                }}
-            }};
-        }});
 
         // Copy Button Handlers
         var copyBtns = root.querySelectorAll(".{uid}_copy_btn");
@@ -983,11 +1147,10 @@ with pl.Config(tbl_rows=100, tbl_cols=50, fmt_str_lengths=100):
     </script>
     """
 
-    # 5. Collapsible Launcher Container in Jupyter
+    # 5. Collapsible Launcher Container in Jupyter with Sleek Pill Button
     df_count = len(dfs_dict)
-    df_names_str = ", ".join(list(dfs_dict.keys())[:3])
-    if df_count > 3:
-        df_names_str += f" (+{df_count - 3} more)"
+    first_df_name = list(dfs_dict.keys())[0] if dfs_dict else ""
+    df_shape_info = f"{dfs_metadata[first_df_name]['shape']}" if first_df_name else "0 rows"
 
     toolkit_box = widgets.VBox([
         widgets.HTML(toolkit_html),
@@ -995,25 +1158,23 @@ with pl.Config(tbl_rows=100, tbl_cols=50, fmt_str_lengths=100):
     ], layout=widgets.Layout(display='none', margin='8px 0 0 0'))
 
     btn_toggle = widgets.Button(
-        description=f"🛠️ Rajapriyan Coding Toolkit ({df_count} DataFrames)",
-        button_style='info',
-        layout=widgets.Layout(width='auto', height='38px', padding='0 18px')
+        description=f"🛠️ Rajapriyan Coding Toolkit  ({first_df_name} · {df_shape_info})",
+        layout=widgets.Layout(width='auto', height='34px')
     )
+    btn_toggle.add_class(f"{uid}_launcher_btn")
 
     def on_toggle_clicked(b):
         if toolkit_box.layout.display == 'none':
             toolkit_box.layout.display = 'block'
-            btn_toggle.description = f"▲ Collapse Toolkit ({df_names_str})"
-            btn_toggle.button_style = 'primary'
+            btn_toggle.description = f"▲ Hide Toolkit ({first_df_name})"
         else:
             toolkit_box.layout.display = 'none'
-            btn_toggle.description = f"🛠️ Rajapriyan Coding Toolkit ({df_count} DataFrames)"
-            btn_toggle.button_style = 'info'
+            btn_toggle.description = f"🛠️ Rajapriyan Coding Toolkit  ({first_df_name} · {df_shape_info})"
 
     btn_toggle.on_click(on_toggle_clicked)
 
-    # Display Launcher & Collapsible Toolkit Box
-    display(widgets.VBox([btn_toggle, toolkit_box]))
+    # Display Launcher & Toolkit
+    display(widgets.VBox([btn_toggle, toolkit_box], layout=widgets.Layout(width='fit-content', max_width='100%')))
 
     if save_html:
         with open(filename, "w", encoding="utf-8") as f:
