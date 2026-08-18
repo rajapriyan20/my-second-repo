@@ -6,19 +6,18 @@ import ipywidgets as widgets
 import polars as pl
 from IPython.display import HTML, display
 
-TOOLKIT_VERSION = "v2.5.1"
+TOOLKIT_VERSION = "v2.6"
 
 def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filename: str = "polars_jupyter_helper.html"):
     """
-    Rajapriyan Coding Toolkit (v2.5):
-    - Full-Dataset Polars Engine (filters millions of rows in ms)
-    - 3-State Column Header Sorting (Asc -> Desc -> Original)
-    - Working Mouse-Draggable Column Resizing with Fixed 150px Width & '...' Ellipsis
-    - Compact Card-Like Column Selection Pills
-    - Robust Tab Switching & Deep Navy/Slate Theme (Zero White Bleed)
-    - Sleek Compact Launcher Button
+    Rajapriyan Coding Toolkit (v2.6):
+    - Full-Dataset Polars Query Engine (handles millions of rows in ms)
+    - 100% Slate/Blue Deep Theme (Zero white background bleeding)
+    - Working Excel/SAS Viya Mouse-Draggable Column Resizing + 3-State Sorting
+    - Responsive Card-Like Column Selection Pills
+    - Sleek Pill Launcher Button
     """
-    # 1. Discover Polars DataFrames in active interactive session
+    # 1. Discover Polars DataFrames in active Jupyter interactive session
     try:
         from IPython import get_ipython
         ip = get_ipython()
@@ -33,7 +32,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
 
     uid = f"pl_{uuid.uuid4().hex[:8]}"
 
-    # Extract metadata for Inspector & Quick Preview
+    # Extract metadata for Inspector & Reference Cards
     dfs_metadata = {}
     for var_name, obj in dfs_dict.items():
         cols_info = []
@@ -67,23 +66,28 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
 
     metadata_json = json.dumps(dfs_metadata)
 
-    # 2. Master CSS Styles (100% Offline & Dark Themed)
+    # 2. Master CSS Styles (Anti-Invisibility, Pure Deep Navy/Slate Theme)
     css_styles = f"""
     <style>
-        /* Force Root Palette across all wrappers */
+        /* Force Root Dark Palette across all Jupyter / ipywidgets elements */
         #{uid}_root,
         #{uid}_widget_pane_container,
         #{uid}_widget_pane_container .widget-box,
         #{uid}_widget_pane_container .widget-vbox,
         #{uid}_widget_pane_container .widget-hbox,
-        #{uid}_widget_pane_container .jupyter-widgets {{
+        #{uid}_widget_pane_container .widget-inline-hbox,
+        #{uid}_widget_pane_container .jupyter-widgets,
+        .cell-output-ipywidget-background {{
             background-color: #1e293b !important;
+            background: #1e293b !important;
             color: #f8fafc !important;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+            border-color: #334155 !important;
         }}
 
         .{uid}_card_well {{
             background-color: #0f172a !important;
+            background: #0f172a !important;
             border: 1px solid #334155 !important;
             border-radius: 8px !important;
             padding: 8px 10px !important;
@@ -105,9 +109,9 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             color: #38bdf8 !important;
             border: 1px solid #475569 !important;
             border-radius: 6px !important;
-            font-family: ui-monospace, monospace !important;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
             font-size: 12px !important;
-            padding: 5px 8px !important;
+            padding: 4px 8px !important;
             outline: none !important;
         }}
         #{uid}_widget_pane_container select:focus,
@@ -120,7 +124,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         .{uid}_btn_primary button {{
             background: linear-gradient(135deg, #0284c7, #0369a1) !important;
             color: #ffffff !important;
-            border-radius: 8px !important;
+            border-radius: 6px !important;
             font-weight: 600 !important;
             border: 1px solid #38bdf8 !important;
             box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
@@ -128,7 +132,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         .{uid}_btn_success button {{
             background: linear-gradient(135deg, #059669, #047857) !important;
             color: #ffffff !important;
-            border-radius: 8px !important;
+            border-radius: 6px !important;
             font-weight: 600 !important;
             border: 1px solid #34d399 !important;
             box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
@@ -136,7 +140,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         .{uid}_btn_secondary button {{
             background: #334155 !important;
             color: #e2e8f0 !important;
-            border-radius: 8px !important;
+            border-radius: 6px !important;
             font-weight: 600 !important;
             border: 1px solid #475569 !important;
         }}
@@ -154,35 +158,43 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         }}
 
         /* Compact Card-Like Column Selection Pills */
-        .{uid}_col_card {{
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            padding: 3px 8px;
-            border-radius: 6px;
-            font-size: 11px;
-            cursor: pointer;
-            font-family: ui-monospace, monospace;
-            background: #1e293b;
-            border: 1px solid #334155;
-            color: #cbd5e1;
-            user-select: none;
-            transition: all 0.15s ease;
-            height: 22px;
-            box-sizing: border-box;
+        .{uid}_col_chk_pill {{
+            background-color: #0f172a !important;
+            border: 1px solid #334155 !important;
+            border-radius: 6px !important;
+            padding: 1px 6px !important;
+            margin: 2px 4px !important;
+            height: 24px !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            transition: all 0.15s ease !important;
         }}
-        .{uid}_col_card:hover {{
-            border-color: #0284c7;
-            background: #24344d;
-        }}
-        .{uid}_col_card.active {{
-            background: #082f49 !important;
+        .{uid}_col_chk_pill:hover {{
             border-color: #0284c7 !important;
+            background-color: #1e293b !important;
+        }}
+        .{uid}_col_chk_pill.is-checked {{
+            background-color: #082f49 !important;
+            border-color: #0284c7 !important;
+        }}
+        .{uid}_col_chk_pill input[type="checkbox"] {{
+            accent-color: #06b6d4 !important;
+            cursor: pointer !important;
+            margin-right: 4px !important;
+        }}
+        .{uid}_col_chk_pill label span {{
+            color: #cbd5e1 !important;
+            font-family: ui-monospace, monospace !important;
+            font-size: 11px !important;
+            font-weight: 500 !important;
+            cursor: pointer !important;
+        }}
+        .{uid}_col_chk_pill.is-checked label span {{
             color: #38bdf8 !important;
-            font-weight: 600;
+            font-weight: 600 !important;
         }}
 
-        /* Resizable Table Layout with Fixed Widths & Ellipsis */
+        /* Fixed-Width Resizable Table Geometry */
         table.{uid}_res_table {{
             border-collapse: separate !important;
             border-spacing: 0 !important;
@@ -208,6 +220,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             overflow: hidden !important;
             text-overflow: ellipsis !important;
             white-space: nowrap !important;
+            box-sizing: border-box !important;
             cursor: pointer !important;
         }}
         table.{uid}_res_table th:hover {{
@@ -244,20 +257,20 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             right: 0;
             width: 8px;
             height: 100%;
-            cursor: col-resize;
-            user-select: none;
+            cursor: col-resize !important;
+            user-select: none !important;
             background: transparent;
-            z-index: 30;
+            z-index: 50 !important;
         }}
         .{uid}_resizer:hover {{
-            background-color: #06b6d4;
+            background-color: #06b6d4 !important;
         }}
 
         /* Sleek Launcher Pill Button */
-        .{uid}_launcher_btn {{
+        .{uid}_launcher_btn button {{
             background: linear-gradient(135deg, #0284c7, #0f766e) !important;
             color: #ffffff !important;
-            border: 1px solid rgba(255, 255, 255, 0.2) !important;
+            border: 1px solid rgba(255, 255, 255, 0.25) !important;
             border-radius: 20px !important;
             padding: 6px 16px !important;
             font-size: 12px !important;
@@ -266,9 +279,8 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35) !important;
             transition: all 0.2s ease !important;
             width: auto !important;
-            max-width: fit-content !important;
         }}
-        .{uid}_launcher_btn:hover {{
+        .{uid}_launcher_btn button:hover {{
             background: linear-gradient(135deg, #0369a1, #115e59) !important;
             transform: translateY(-1px) !important;
         }}
@@ -330,8 +342,8 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
     btn_apply_cols = widgets.Button(description="✓ Apply Columns", layout=widgets.Layout(width='130px'))
     btn_apply_cols.add_class(f"{uid}_btn_primary")
 
-    # Column checklist area
-    col_checklist_output = widgets.HTML(value="")
+    # Column checklist box
+    col_checklist_box = widgets.HBox([], layout=widgets.Layout(flex_flow='row wrap', max_height='75px', overflow='auto', padding='4px', background_color='#0f172a'))
 
     btn_add_filter = widgets.Button(description="+ Add Column Filter", layout=widgets.Layout(width='160px'))
     btn_add_filter.add_class(f"{uid}_btn_primary")
@@ -344,59 +356,44 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
 
     status_code_box = widgets.HTML(value="")
 
-    def update_col_cards_html():
+    def update_col_checkboxes():
         if not current_df_name or current_df_name not in dfs_dict:
-            col_checklist_output.value = ""
+            col_checklist_box.children = []
             return
         
         df_obj = dfs_dict[current_df_name]
         query = col_search_input.value.strip().lower()
         
-        cards_html = ""
+        checkbox_widgets = []
         for col in df_obj.columns:
             if query and query not in col.lower():
                 continue
             
-            is_active = col in pending_cols
-            active_cls = "active" if is_active else ""
-            dtype_str = str(df_obj[col].dtype)
+            is_checked = (col in pending_cols)
+            chk = widgets.Checkbox(
+                value=is_checked,
+                description=f"{col} ({df_obj[col].dtype})",
+                indent=False,
+                layout=widgets.Layout(width='auto', margin='2px 4px')
+            )
+            chk.add_class(f"{uid}_col_chk_pill")
+            if is_checked:
+                chk.add_class("is-checked")
             
-            cards_html += f"""
-            <span class="{uid}_col_card {active_cls}" data-col="{html.escape(col)}" onclick="
-                var col = this.getAttribute('data-col');
-                var inp = document.getElementById('{uid}_hidden_col_toggle');
-                inp.value = col;
-                inp.dispatchEvent(new Event('change'));
-                this.classList.toggle('active');
-            ">
-                <input type="checkbox" {'checked' if is_active else ''} style="accent-color:#06b6d4; cursor:pointer; pointer-events:none; margin:0 2px 0 0;">
-                <span>{html.escape(col)}</span>
-                <span style="font-size:9px; color:#64748b;">({html.escape(dtype_str)})</span>
-            </span>
-            """
-        
-        col_checklist_output.value = f"""
-        <div style="display:flex; flex-wrap:wrap; gap:4px; max-height:75px; overflow-y:auto; padding:4px; background:#0f172a; border-radius:6px;">
-            {cards_html or '<span style="color:#64748b; font-size:11px;">No columns matched</span>'}
-        </div>
-        """
+            def make_chk_handler(c_name, w_chk):
+                def handler(change):
+                    if change['new']:
+                        pending_cols.add(c_name)
+                        w_chk.add_class("is-checked")
+                    else:
+                        pending_cols.discard(c_name)
+                        w_chk.remove_class("is-checked")
+                return handler
 
-    # Hidden toggle listener for card clicks
-    hidden_col_input = widgets.Text(value="", layout=widgets.Layout(display='none'))
-    hidden_col_input.add_class(f"{uid}_hidden_toggle")
+            chk.observe(make_chk_handler(col, chk), names='value')
+            checkbox_widgets.append(chk)
 
-    def on_hidden_toggle_change(change):
-        col_name = change['new']
-        if not col_name:
-            return
-        if col_name in pending_cols:
-            pending_cols.discard(col_name)
-        else:
-            pending_cols.add(col_name)
-        hidden_col_input.value = ""  # Reset
-        update_col_cards_html()
-
-    hidden_col_input.observe(on_hidden_toggle_change, names='value')
+        col_checklist_box.children = checkbox_widgets
 
     def create_filter_row():
         if not current_df_name or current_df_name not in dfs_dict:
@@ -487,7 +484,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
                             code_snippets.append(f'pl.col("{col}") == {num}')
                         except Exception:
                             filter_exprs.append(pl.col(col).cast(pl.Utf8) == val)
-                            code_snippets.append(f'pl.col("{col}") == "{val}"')
+                            code_snippets.append(f'pl.col("{col}").cast(pl.Utf8) == "{val}"')
                     else:
                         filter_exprs.append(pl.col(col).cast(pl.Utf8) == val)
                         code_snippets.append(f'pl.col("{col}") == "{val}"')
@@ -580,18 +577,57 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             if (!table) return;
             var ths = table.querySelectorAll("thead th");
             var tbody = table.querySelector("tbody");
+            var isDragging = false;
 
             ths.forEach(function(th, colIdx) {{
                 if (th.getAttribute('data-no-sort') === 'true') return;
                 
-                // 1. Column Header 3-State Sorting (Asc -> Desc -> Orig)
+                // 1. Column Header Mouse-Drag Resizing
+                var resizer = th.querySelector(".{uid}_resizer");
+                if (resizer) {{
+                    resizer.addEventListener("mousedown", function(e) {{
+                        e.preventDefault();
+                        e.stopPropagation();
+                        isDragging = true;
+
+                        var startX = e.pageX || e.clientX;
+                        var startWidth = th.offsetWidth;
+                        resizer.style.backgroundColor = "#06b6d4";
+
+                        function onMouseMove(ev) {{
+                            var currentX = ev.pageX || ev.clientX;
+                            var newWidth = Math.max(50, startWidth + (currentX - startX));
+                            th.style.width = newWidth + "px";
+                            th.style.minWidth = newWidth + "px";
+                            th.style.maxWidth = newWidth + "px";
+                            
+                            var cells = table.querySelectorAll("tbody tr td:nth-child(" + (colIdx + 1) + ")");
+                            cells.forEach(function(td) {{
+                                td.style.width = newWidth + "px";
+                                td.style.minWidth = newWidth + "px";
+                                td.style.maxWidth = newWidth + "px";
+                            }});
+                        }}
+
+                        function onMouseUp() {{
+                            resizer.style.backgroundColor = "transparent";
+                            window.removeEventListener("mousemove", onMouseMove, true);
+                            window.removeEventListener("mouseup", onMouseUp, true);
+                            setTimeout(function() {{ isDragging = false; }}, 100);
+                        }}
+
+                        window.addEventListener("mousemove", onMouseMove, true);
+                        window.addEventListener("mouseup", onMouseUp, true);
+                    }});
+                }}
+
+                // 2. Column Header 3-State Sorting (Asc -> Desc -> Orig)
                 th.addEventListener('click', function(e) {{
-                    if (e.target.classList.contains('{uid}_resizer')) return;
+                    if (isDragging || (e.target && e.target.classList && e.target.classList.contains('{uid}_resizer'))) return;
                     
                     var currentSort = th.getAttribute('data-sort') || 'none';
                     var nextSort = (currentSort === 'none') ? 'asc' : ((currentSort === 'asc') ? 'desc' : 'none');
                     
-                    // Reset all headers
                     ths.forEach(function(otherTh) {{
                         otherTh.setAttribute('data-sort', 'none');
                         var icon = otherTh.querySelector('.sort-icon');
@@ -633,42 +669,6 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
                         tbody.appendChild(row);
                     }});
                 }});
-
-                // 2. Mouse-Drag Column Resizing
-                var resizer = th.querySelector(".{uid}_resizer");
-                if (!resizer) return;
-                
-                resizer.addEventListener("mousedown", function(e) {{
-                    e.preventDefault();
-                    e.stopPropagation();
-
-                    var startX = e.pageX;
-                    var startWidth = th.offsetWidth;
-                    resizer.style.backgroundColor = "#06b6d4";
-
-                    function onMouseMove(e) {{
-                        var newWidth = Math.max(50, startWidth + (e.pageX - startX));
-                        th.style.width = newWidth + "px";
-                        th.style.minWidth = newWidth + "px";
-                        th.style.maxWidth = newWidth + "px";
-                        
-                        var cells = table.querySelectorAll("tbody tr td:nth-child(" + (colIdx + 1) + ")");
-                        cells.forEach(function(td) {{
-                            td.style.width = newWidth + "px";
-                            td.style.minWidth = newWidth + "px";
-                            td.style.maxWidth = newWidth + "px";
-                        }});
-                    }}
-
-                    function onMouseUp() {{
-                        resizer.style.backgroundColor = "transparent";
-                        window.removeEventListener("mousemove", onMouseMove);
-                        window.removeEventListener("mouseup", onMouseUp);
-                    }}
-
-                    window.addEventListener("mousemove", onMouseMove);
-                    window.addEventListener("mouseup", onMouseUp);
-                }});
             }});
         }})();
         </script>
@@ -691,13 +691,13 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             applied_columns.update(pending_cols)
             active_filters.clear()
             filter_rows_container.children = []
-            update_col_cards_html()
+            update_col_checkboxes()
             render_polars_table()
 
     df_dropdown.observe(on_df_change, names='value')
 
     def on_col_search(change):
-        update_col_cards_html()
+        update_col_checkboxes()
     col_search_input.observe(on_col_search, names='value')
 
     def on_select_all_cols(b):
@@ -706,7 +706,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             for c in dfs_dict[current_df_name].columns:
                 if not q or q in c.lower():
                     pending_cols.add(c)
-            update_col_cards_html()
+            update_col_checkboxes()
     btn_select_all_cols.on_click(on_select_all_cols)
 
     def on_clear_all_cols(b):
@@ -715,7 +715,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             for c in dfs_dict[current_df_name].columns:
                 if not q or q in c.lower():
                     pending_cols.discard(c)
-            update_col_cards_html()
+            update_col_checkboxes()
     btn_clear_all_cols.on_click(on_clear_all_cols)
 
     def on_apply_cols(b):
@@ -742,7 +742,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
     if current_df_name and current_df_name in dfs_dict:
         pending_cols.update(dfs_dict[current_df_name].columns[:8])
         applied_columns.update(pending_cols)
-        update_col_cards_html()
+        update_col_checkboxes()
 
     # Construct the Quick Preview Tab Layout
     col_section_box = widgets.VBox([
@@ -753,9 +753,8 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             btn_clear_all_cols,
             btn_apply_cols
         ], layout=widgets.Layout(align_items='center', gap='6px', margin='0 0 5px 0')),
-        col_checklist_output,
-        hidden_col_input
-    ], layout=widgets.Layout(margin='0 0 8px 0'))
+        col_checklist_box
+    ], layout=widgets.Layout(background_color='#0f172a', padding='8px', border='1px solid #334155', border_radius='8px', margin='0 0 8px 0'))
     col_section_box.add_class(f"{uid}_card_well")
 
     filter_section_box = widgets.VBox([
@@ -766,7 +765,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             btn_reset_filters
         ], layout=widgets.Layout(align_items='center', gap='6px', margin='0 0 6px 0')),
         filter_rows_container
-    ], layout=widgets.Layout(margin='0 0 8px 0'))
+    ], layout=widgets.Layout(background_color='#0f172a', padding='8px', border='1px solid #334155', border_radius='8px', margin='0 0 8px 0'))
     filter_section_box.add_class(f"{uid}_card_well")
 
     quick_preview_box = widgets.VBox([
@@ -780,9 +779,9 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         filter_section_box,
         status_code_box,
         preview_output
-    ], layout=widgets.Layout(padding='12px', border_radius='10px'))
+    ], layout=widgets.Layout(padding='12px', background_color='#1e293b', border_radius='10px'))
 
-    widget_wrapper = widgets.Box([quick_preview_box], layout=widgets.Layout(display='block'))
+    widget_wrapper = widgets.Box([quick_preview_box], layout=widgets.Layout(display='block', background_color='#1e293b'))
     widget_wrapper.add_class(f"{uid}_widget_pane_container")
 
     # Initial table render
@@ -1155,7 +1154,7 @@ with pl.Config(tbl_rows=100, tbl_cols=50, fmt_str_lengths=100):
     toolkit_box = widgets.VBox([
         widgets.HTML(toolkit_html),
         widget_wrapper
-    ], layout=widgets.Layout(display='none', margin='8px 0 0 0'))
+    ], layout=widgets.Layout(display='none', margin='8px 0 0 0', background_color='#1e293b'))
 
     btn_toggle = widgets.Button(
         description=f"🛠️ Rajapriyan Coding Toolkit  ({first_df_name} · {df_shape_info})",
@@ -1173,7 +1172,7 @@ with pl.Config(tbl_rows=100, tbl_cols=50, fmt_str_lengths=100):
 
     btn_toggle.on_click(on_toggle_clicked)
 
-    # Display Launcher & Toolkit
+    # Display Launcher & Toolkit Container
     display(widgets.VBox([btn_toggle, toolkit_box], layout=widgets.Layout(width='fit-content', max_width='100%')))
 
     if save_html:
