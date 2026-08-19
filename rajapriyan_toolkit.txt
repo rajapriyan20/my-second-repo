@@ -6,13 +6,13 @@ import ipywidgets as widgets
 import polars as pl
 from IPython.display import HTML, display
 
-TOOLKIT_VERSION = "v3.4"
+TOOLKIT_VERSION = "v3.5"
 
 def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filename: str = "polars_jupyter_helper.html"):
     """
-    Rajapriyan Coding Toolkit (v3.4):
+    Rajapriyan Coding Toolkit (v3.5):
+    - True Adaptive Column Width: min(150px, content_fit_width) with '...' truncation
     - 70% / 30% Split: Column Selection (70%) and Parallel Filters (30%)
-    - Adaptive Column Width: min(predefined_max_width, content_fit_width) with '...' truncation
     - Default 500 Records with 'Load +500 More' Pagination Button
     - 100% Solid Dark Theme: Completely eliminates white gaps & canvas bleed
     - Integrated Header Bar: Active DataFrame selection & shape badge in top header line
@@ -255,11 +255,10 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
             font-weight: 600 !important;
         }}
 
-        /* Resizable Table Layout with Adaptive Widths & Ellipsis */
+        /* Resizable Table Layout with Adaptive Content Widths & Ellipsis */
         table.{uid}_res_table {{
             border-collapse: separate !important;
             border-spacing: 0 !important;
-            min-width: 100% !important;
             width: max-content !important;
             background-color: #0f172a !important;
             table-layout: fixed !important;
@@ -274,7 +273,7 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
             text-transform: uppercase !important;
             border-bottom: 2px solid #334155 !important;
             border-right: 1px solid #334155 !important;
-            padding: 6px 10px !important;
+            padding: 6px 8px !important;
             text-align: left !important;
             user-select: none !important;
             z-index: 10 !important;
@@ -289,8 +288,8 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
         }}
         table.{uid}_res_table td {{
             font-family: ui-monospace, monospace !important;
-            font-size: 12px !important;
-            padding: 5px 10px !important;
+            font-size: 11.5px !important;
+            padding: 5px 8px !important;
             border-bottom: 1px solid #293548 !important;
             border-right: 1px solid #293548 !important;
             overflow: hidden !important;
@@ -378,7 +377,7 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
     current_df_name = list(dfs_dict.keys())[0] if dfs_dict else None
     applied_columns = set()
     pending_cols = set()
-    current_limit = preview_rows  # Starts at 500
+    current_limit = preview_rows  # Default 500
 
     # Toolbar Controls
     df_dropdown = widgets.Dropdown(
@@ -553,7 +552,7 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
                             code_snippets.append(f'pl.col("{col}") == {num}')
                         except Exception:
                             filter_exprs.append(pl.col(col).cast(pl.Utf8) == val)
-                            code_snippets.append(f'pl.col("{col}") == "{val}"')
+                            code_snippets.append(f'pl.col("{col}").cast(pl.Utf8) == "{val}"')
                     else:
                         filter_exprs.append(pl.col(col).cast(pl.Utf8) == val)
                         code_snippets.append(f'pl.col("{col}") == "{val}"')
@@ -601,24 +600,23 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
         slice_df = filtered_df.select(cols_to_show).head(current_limit)
         visible_rows_count = slice_df.shape[0]
 
-        # Adaptive Column Width Calculation: min(150, content_fit_width)
-        MAX_PREDEFINED_WIDTH = 150
-        MIN_FLOOR_WIDTH = 55
+        # --- TRUE ADAPTIVE WIDTH CALCULATION: min(150, content_fit_width) ---
+        MAX_PREDEFINED_CAP = 150
+        MIN_FLOOR_WIDTH = 48
         col_widths = {}
 
         for col in cols_to_show:
-            header_char_len = len(str(col)) + 3  # Space for sort icon & padding
+            header_char_len = len(str(col)) + 2  # Space for sort icon & spacing
             max_val_len = 0
-            # Sample up to first 100 rows for high-performance width calculation
             for v in slice_df[col].head(100):
                 if v is not None:
                     max_val_len = max(max_val_len, len(str(v)))
             
-            max_chars = max(header_char_len, max_val_len)
-            content_fit_width = max_chars * 8 + 20
-            # Whichever is minimum between predefined fixed width (150) and content fit width
-            calculated_width = min(MAX_PREDEFINED_WIDTH, max(MIN_FLOOR_WIDTH, content_fit_width))
-            col_widths[col] = calculated_width
+            char_count = max(header_char_len, max_val_len)
+            # Monospace character is ~7.2px wide + 16px cell padding
+            content_fit_width = int(char_count * 7.4) + 18
+            # Exact formula: min(150px, content_fit_width)
+            col_widths[col] = min(MAX_PREDEFINED_CAP, max(MIN_FLOOR_WIDTH, content_fit_width))
 
         # Status & Generated Code Info Box
         code_str = f'{current_df_name}.filter({" & ".join(code_snippets)})' if code_snippets else f'{current_df_name}.head({visible_rows_count})'
@@ -635,9 +633,9 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
         """
         status_code_box.value = status_html
 
-        # Table Geometry with Adaptive Widths, 3-State Sort & Draggable Resizing
+        # Table Geometry with True Adaptive Widths (NOT Stretched by min-width: 100%)
         table_id = f"{uid}_res_table_el"
-        th_cells = f'<th style="width:45px; min-width:45px; max-width:45px; text-align:center; position:relative; cursor:default;" data-no-sort="true">#</th>'
+        th_cells = f'<th style="width:40px; min-width:40px; max-width:40px; text-align:center; position:relative; cursor:default;" data-no-sort="true">#</th>'
         for col in cols_to_show:
             w = col_widths[col]
             th_cells += f'<th style="width:{w}px; min-width:{w}px; max-width:{w}px; position:relative;" title="Click to sort (Asc/Desc/Orig) · Drag edge to resize" data-sort="none"><span class="col-title">{html.escape(col)}</span><span class="sort-icon" style="color:#64748b; margin-left:3px; font-size:9px;"></span><div class="{uid}_resizer"></div></th>'
@@ -645,7 +643,7 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
         tbody_rows = ""
         for r_idx, row in enumerate(slice_df.iter_rows()):
             row_class = "row-even" if (r_idx % 2 == 0) else "row-odd"
-            td_cells = f'<td style="width:45px; min-width:45px; max-width:45px; text-align:center; color:#64748b;" data-orig-row="{r_idx}">{r_idx + 1}</td>'
+            td_cells = f'<td style="width:40px; min-width:40px; max-width:40px; text-align:center; color:#64748b;" data-orig-row="{r_idx}">{r_idx + 1}</td>'
             for c_idx, val in enumerate(row):
                 col_name = cols_to_show[c_idx]
                 w = col_widths[col_name]
@@ -689,7 +687,7 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
 
                         function onMouseMove(ev) {{
                             var currentX = ev.pageX || ev.clientX;
-                            var newWidth = Math.max(45, startWidth + (currentX - startX));
+                            var newWidth = Math.max(40, startWidth + (currentX - startX));
                             th.style.width = newWidth + "px";
                             th.style.minWidth = newWidth + "px";
                             th.style.maxWidth = newWidth + "px";
@@ -1030,7 +1028,7 @@ df.filter(
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                     <span style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">2. Dynamic Lists & String Regex</span>
                     <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 5px; padding: 2px 6px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center;">
-                        <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                     </button>
                 </div>
                 <pre style="background: #0f172a; color: #e2e8f0; padding: 8px; border-radius: 6px; font-size: 11px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code>target_regions = ["North", "APAC", "West"]
