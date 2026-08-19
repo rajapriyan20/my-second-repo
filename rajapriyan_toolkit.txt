@@ -6,18 +6,17 @@ import ipywidgets as widgets
 import polars as pl
 from IPython.display import HTML, display
 
-TOOLKIT_VERSION = "v2.8"
+TOOLKIT_VERSION = "v3.0"
 
 def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filename: str = "polars_jupyter_helper.html"):
     """
-    Rajapriyan Coding Toolkit (v2.8):
-    - Redesigned Tactile Rounded Buttons (All, Clear, Apply, Add Filter, Run, Reset)
-    - Modern Rounded Pill Search Boxes with Focus Glow
-    - Side-by-Side Column Selection & Filter Panels with Dark Wells
-    - 100% Dark Blue/Slate Palette & Zero White Background Bleeding
-    - Full-Dataset Polars Engine (filters millions of rows in ms)
-    - Mouse-Draggable Column Header Resizing + 3-State Sorting (Asc/Desc/Orig)
-    - Sleek Compact Launcher Pill Button
+    Rajapriyan Coding Toolkit (v3.0):
+    - Side-by-Side Column Selection & Parallel Filter Builders
+    - 100% Dark Blue/Slate Theme (Zero white gaps or background bleed)
+    - Tactile Rounded Gradient Buttons (All, Clear, Apply, Filter, Run, Reset)
+    - Full-Dataset Polars Query Engine (handles millions of rows in ms)
+    - Excel/SAS Viya Mouse-Draggable Column Resizing + 3-State Sorting
+    - Compact Launcher Pill Button
     """
     # 1. Discover Polars DataFrames in active Jupyter interactive session
     try:
@@ -68,10 +67,10 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
 
     metadata_json = json.dumps(dfs_metadata)
 
-    # 2. Master CSS Styles (Tactile Rounded Buttons & Search Pill Inputs)
+    # 2. Master CSS Styles (Forces Dark Blue Everywhere & Clean Tactile Buttons)
     css_styles = f"""
     <style>
-        /* Force Root Dark Palette across all wrappers */
+        /* Force Root Dark Palette across all Jupyter / ipywidgets elements */
         #{uid}_root,
         #{uid}_widget_pane_container,
         #{uid}_widget_pane_container .widget-box,
@@ -110,10 +109,10 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             background-color: #0f172a !important;
             color: #38bdf8 !important;
             border: 1px solid #475569 !important;
-            border-radius: 8px !important;
+            border-radius: 6px !important;
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
             font-size: 12px !important;
-            padding: 5px 10px !important;
+            padding: 4px 8px !important;
             outline: none !important;
             box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4) !important;
             transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
@@ -128,28 +127,28 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
 
         /* Base Tactile Button Reset */
         #{uid}_widget_pane_container .widget-button button {{
-            border-radius: 8px !important;
-            font-size: 12px !important;
+            border-radius: 6px !important;
+            font-size: 11px !important;
             font-weight: 600 !important;
-            padding: 4px 12px !important;
+            padding: 3px 10px !important;
             cursor: pointer !important;
             transition: all 0.15s ease-in-out !important;
             box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
-            height: 28px !important;
-            line-height: 18px !important;
+            height: 26px !important;
+            line-height: 16px !important;
             border: 1px solid transparent !important;
         }}
         #{uid}_widget_pane_container .widget-button button:hover {{
             filter: brightness(1.15) !important;
             transform: translateY(-1px) !important;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.4) !important;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.4) !important;
         }}
         #{uid}_widget_pane_container .widget-button button:active {{
             transform: translateY(0px) !important;
             filter: brightness(0.95) !important;
         }}
 
-        /* 1, 2, 6: Secondary Buttons (All, Clear, Reset) */
+        /* Buttons: All, Clear, Reset */
         .{uid}_btn_secondary button {{
             background: linear-gradient(180deg, #334155, #1e293b) !important;
             color: #f1f5f9 !important;
@@ -161,7 +160,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             color: #ffffff !important;
         }}
 
-        /* 3: Apply Button */
+        /* Button: Apply */
         .{uid}_btn_apply button {{
             background: linear-gradient(135deg, #0284c7, #0369a1) !important;
             color: #ffffff !important;
@@ -169,15 +168,15 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             box-shadow: 0 2px 6px rgba(2, 132, 199, 0.35) !important;
         }}
 
-        /* 4: Add Filter Button */
+        /* Button: Add Filter */
         .{uid}_btn_add_filter button {{
             background: linear-gradient(135deg, #6366f1, #4f46e5) !important;
             color: #ffffff !important;
-            border: 1px solid #a5b4fc !important;
+            border: 1px solid #818cf8 !important;
             box-shadow: 0 2px 6px rgba(99, 102, 241, 0.35) !important;
         }}
 
-        /* 5: Run Filter Button */
+        /* Button: Run Filter */
         .{uid}_btn_run_filter button {{
             background: linear-gradient(135deg, #059669, #047857) !important;
             color: #ffffff !important;
@@ -185,15 +184,15 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             box-shadow: 0 2px 6px rgba(5, 150, 105, 0.35) !important;
         }}
 
-        /* Delete Filter Button */
+        /* Button: Delete Filter */
         .{uid}_btn_danger button {{
             background: linear-gradient(135deg, #e11d48, #be123c) !important;
             color: #ffffff !important;
             border: 1px solid #fb7185 !important;
             border-radius: 6px !important;
-            padding: 2px 6px !important;
-            height: 26px !important;
-            line-height: 14px !important;
+            padding: 0 4px !important;
+            height: 24px !important;
+            min-width: 26px !important;
         }}
 
         /* Compact Card-Like Column Selection Pills */
@@ -367,10 +366,10 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
     )
     
     shape_label = widgets.HTML(
-        value=f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:5px 10px; border-radius:8px; font-size:12px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape'] if current_df_name else '0 rows'}</span>"
+        value=f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:5px 10px; border-radius:6px; font-size:12px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape'] if current_df_name else '0 rows'}</span>"
     )
 
-    # Column Controls with Rounded Tactical Button Classes
+    # Column Controls (Side-by-Side Sizing)
     col_search_input = widgets.Text(placeholder="🔍 Search...", layout=widgets.Layout(width='125px'))
     
     btn_select_all_cols = widgets.Button(description="All", layout=widgets.Layout(width='55px'))
@@ -384,7 +383,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
 
     col_checklist_box = widgets.HBox([], layout=widgets.Layout(flex_flow='row wrap', max_height='85px', overflow='auto', padding='4px', background_color='#0f172a'))
 
-    # Filter Controls with Rounded Tactical Button Classes
+    # Filter Controls (Side-by-Side Sizing)
     btn_add_filter = widgets.Button(description="+ Filter", layout=widgets.Layout(width='90px'))
     btn_add_filter.add_class(f"{uid}_btn_add_filter")
 
@@ -578,7 +577,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
                 <span style="color:#34d399; font-weight:600;">⚡ Matched {matched_count:,} of {df_obj.shape[0]:,} rows <span style="color:#94a3b8; font-weight:normal;">({elapsed_ms:.1f} ms)</span></span>
                 <span style="color:#38bdf8; font-family:monospace; font-size:11px;">Showing top {min(preview_rows, matched_count)} rows × {len(cols_to_show)} cols (Click header to sort · Drag edge to resize)</span>
             </div>
-            <div style="font-family:monospace; font-size:11px; color:#94a3b8; background:#1e293b; padding:5px 10px; border-radius:6px; overflow-x:auto;">
+            <div style="font-family:monospace; font-size:11px; color:#94a3b8; background:#1e293b; padding:5px 10px; border-radius:5px; overflow-x:auto;">
                 <span style="color:#38bdf8;">Code:</span> {html.escape(code_str)}
             </div>
         </div>
@@ -724,7 +723,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         current_df_name = change['new']
         if current_df_name and current_df_name in dfs_dict:
             df_obj = dfs_dict[current_df_name]
-            shape_label.value = f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:5px 10px; border-radius:8px; font-size:12px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape']}</span>"
+            shape_label.value = f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:5px 10px; border-radius:6px; font-size:12px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape']}</span>"
             pending_cols.clear()
             pending_cols.update(df_obj.columns[:8])
             applied_columns.clear()
@@ -812,13 +811,13 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
     side_by_side_controls = widgets.HBox([
         col_section_box,
         filter_section_box
-    ], layout=widgets.Layout(width='100%', gap='10px', margin='0 0 10px 0', align_items='stretch'))
+    ], layout=widgets.Layout(width='100%', gap='10px', margin='0 0 10px 0', background_color='#1e293b', align_items='stretch'))
 
     # Top Header Row: DataFrame selection with clean bottom divider line
     df_header_row = widgets.HBox([
         df_dropdown,
         shape_label
-    ], layout=widgets.Layout(align_items='center', margin='0 0 10px 0', padding='0 0 10px 0', border_bottom='1px solid #334155', width='100%'))
+    ], layout=widgets.Layout(align_items='center', margin='0 0 10px 0', padding='0 0 10px 0', border_bottom='1px solid #334155', width='100%', background_color='#1e293b'))
 
     quick_preview_box = widgets.VBox([
         df_header_row,
@@ -827,7 +826,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         preview_output
     ], layout=widgets.Layout(padding='12px', background_color='#1e293b', border_radius='10px', width='100%'))
 
-    widget_wrapper = widgets.Box([quick_preview_box], layout=widgets.Layout(display='block', background_color='#1e293b'))
+    widget_wrapper = widgets.Box([quick_preview_box], layout=widgets.Layout(display='block', background_color='#1e293b', width='100%'))
     widget_wrapper.add_class(f"{uid}_widget_pane_container")
 
     # Initial table render
