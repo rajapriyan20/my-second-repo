@@ -6,7 +6,7 @@ import ipywidgets as widgets
 import polars as pl
 from IPython.display import HTML, display
 
-TOOLKIT_VERSION = "v3.9"
+TOOLKIT_VERSION = "v4.0"
 
 def get_dtype_symbol_badge(dtype_str: str) -> str:
     """Returns SAS Viya inspired datatype icon/badge for table headers."""
@@ -24,11 +24,12 @@ def get_dtype_symbol_badge(dtype_str: str) -> str:
     else:
         return f'<span style="font-size:9px; font-weight:800; color:#94a3b8; background:#334155; border:1px solid #475569; padding:1px 4px; border-radius:3px; margin-left:4px; vertical-align:middle;" title="{html.escape(dtype_str)}">?</span>'
 
-def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filename: str = "polars_jupyter_helper.html"):
+def rp(preview_rows: int = 500, save_html: bool = False, filename: str = "polars_jupyter_helper.html"):
     """
-    Rajapriyan Coding Toolkit (v3.9):
-    - Card-Like Column Selection Pills without Datatype Text
-    - SAS Viya Style DataType Symbols in Table Headers (123, A, 📅, TF, [ ])
+    Rajapriyan Coding Toolkit (v4.0):
+    - Main entry point: rp()
+    - Filter Logic: AND / OR conjunctions + Grouping (G1, G2, G3, G4)
+    - Scrollable filter container with vertical scrollbar when 3+ filters are added
     - Full Support for pl.DataFrame & pl.LazyFrame (scan_parquet, scan_csv, scan_ipc)
     - 70% (Columns) / 30% (Filters) Side-by-Side Split
     - Adaptive Column Width: min(150px, content_fit_width) with '...' Truncation
@@ -64,7 +65,7 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
             col_names = list(obj.columns)
             col_types = {c: "Unknown" for c in col_names}
 
-        # Safely pull a small 10-row sample for metadata inspection
+        # Pull small 10-row sample for metadata inspection
         try:
             sample_df = obj.limit(10).collect() if is_lazy else obj.head(10)
         except Exception:
@@ -114,7 +115,7 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
 
     metadata_json = json.dumps(dfs_metadata)
 
-    # 2. Master CSS Styles (Total Dark Theme Override + Card Selection Pills)
+    # 2. Master CSS Styles
     css_styles = f"""
     <style>
         .raj_root_{uid},
@@ -134,7 +135,6 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
             width: 100% !important;
         }}
 
-        /* Wipe out all Jupyter default light-theme widget backgrounds */
         .raj_root_{uid} .jupyter-widgets,
         .raj_root_{uid} .widget-box,
         .raj_root_{uid} .widget-vbox,
@@ -178,16 +178,15 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
             border: 1px solid #475569 !important;
             border-radius: 6px !important;
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
-            font-size: 11.5px !important;
+            font-size: 11px !important;
             font-weight: 600 !important;
-            padding: 4px 8px !important;
+            padding: 2px 6px !important;
             outline: none !important;
-            height: 30px !important;
-            min-height: 30px !important;
-            line-height: 1.4 !important;
+            height: 26px !important;
+            min-height: 26px !important;
+            line-height: 1.3 !important;
             vertical-align: middle !important;
             box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4) !important;
-            transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
         }}
         .raj_root_{uid} input[type="text"],
         .raj_root_{uid} .widget-text input {{
@@ -196,14 +195,13 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
             border: 1px solid #475569 !important;
             border-radius: 6px !important;
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
-            font-size: 11.5px !important;
-            padding: 4px 8px !important;
+            font-size: 11px !important;
+            padding: 2px 6px !important;
             outline: none !important;
-            height: 28px !important;
-            min-height: 28px !important;
+            height: 26px !important;
+            min-height: 26px !important;
             line-height: 1.3 !important;
             box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4) !important;
-            transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
         }}
         .raj_root_{uid} input[type="text"]:focus,
         .raj_root_{uid} select:focus {{
@@ -223,14 +221,13 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
             cursor: pointer !important;
             transition: all 0.15s ease-in-out !important;
-            height: 28px !important;
-            min-height: 28px !important;
-            padding: 0 12px !important;
+            height: 26px !important;
+            min-height: 26px !important;
+            padding: 0 10px !important;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
             border: 1px solid transparent !important;
             text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6) !important;
             outline: none !important;
-            letter-spacing: 0.3px !important;
         }}
         .raj_root_{uid} .widget-button button:hover,
         .raj_root_{uid} button.jupyter-button:hover {{
@@ -242,7 +239,6 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
         .raj_root_{uid} button.jupyter-button:active {{
             transform: translateY(0px) !important;
             filter: brightness(0.95) !important;
-            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4) !important;
         }}
 
         .raj_root_{uid} .raj_btn_secondary button {{
@@ -272,11 +268,12 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
             background: linear-gradient(180deg, #e11d48 0%, #be123c 100%) !important;
             color: #ffffff !important;
             border: 1px solid #fb7185 !important;
-            border-radius: 6px !important;
-            padding: 0 4px !important;
-            height: 24px !important;
-            min-height: 24px !important;
-            min-width: 24px !important;
+            border-radius: 4px !important;
+            padding: 0 !important;
+            height: 22px !important;
+            min-height: 22px !important;
+            width: 22px !important;
+            min-width: 22px !important;
         }}
         .raj_root_{uid} .raj_btn_load_more button {{
             background: linear-gradient(180deg, #0369a1 0%, #0284c7 100%) !important;
@@ -290,7 +287,7 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
             padding: 0 16px !important;
         }}
 
-        /* ================= CARD-LIKE COLUMN SELECTION PILLS ================= */
+        /* Card-Like Column Selection Pills */
         .{uid}_col_chk_pill {{
             background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%) !important;
             border: 1px solid #334155 !important;
@@ -450,7 +447,9 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
 
     # 3. Interactive Quick Preview Engine (Python Polars Backend)
     preview_output = widgets.Output(layout=widgets.Layout(width='100%', margin='0'))
-    filter_rows_container = widgets.VBox([], layout=widgets.Layout(max_height='68px', overflow='auto', padding='0px', margin='0'))
+    
+    # Scrollable container for filters (enables vertical scrollbar when 3+ rows exist)
+    filter_rows_container = widgets.VBox([], layout=widgets.Layout(max_height='108px', overflow_y='auto', overflow_x='hidden', padding='2px', margin='0'))
     active_filters = []
     
     current_df_name = list(dfs_dict.keys())[0] if dfs_dict else None
@@ -464,7 +463,7 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
         value=current_df_name,
         description='DF:',
         style={'description_width': '25px'},
-        layout=widgets.Layout(width='200px', height='30px')
+        layout=widgets.Layout(width='200px', height='28px')
     )
     
     shape_label = widgets.HTML(
@@ -472,27 +471,27 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
     )
 
     # Column Controls (70% Panel)
-    col_search_input = widgets.Text(placeholder="🔍 Search...", layout=widgets.Layout(width='120px', height='28px'))
+    col_search_input = widgets.Text(placeholder="🔍 Search...", layout=widgets.Layout(width='120px', height='26px'))
     
-    btn_select_all_cols = widgets.Button(description="All", layout=widgets.Layout(width='50px', height='28px'))
+    btn_select_all_cols = widgets.Button(description="All", layout=widgets.Layout(width='45px', height='26px'))
     btn_select_all_cols.add_class("raj_btn_secondary")
     
-    btn_clear_all_cols = widgets.Button(description="Clear", layout=widgets.Layout(width='55px', height='28px'))
+    btn_clear_all_cols = widgets.Button(description="Clear", layout=widgets.Layout(width='50px', height='26px'))
     btn_clear_all_cols.add_class("raj_btn_secondary")
     
-    btn_apply_cols = widgets.Button(description="✓ Apply", layout=widgets.Layout(width='80px', height='28px'))
+    btn_apply_cols = widgets.Button(description="✓ Apply", layout=widgets.Layout(width='75px', height='26px'))
     btn_apply_cols.add_class("raj_btn_apply")
 
-    col_checklist_box = widgets.HBox([], layout=widgets.Layout(flex_flow='row wrap', max_height='68px', overflow='auto', padding='2px', background_color='#0f172a', margin='0'))
+    col_checklist_box = widgets.HBox([], layout=widgets.Layout(flex_flow='row wrap', max_height='108px', overflow='auto', padding='2px', background_color='#0f172a', margin='0'))
 
     # Filter Controls (30% Panel)
-    btn_add_filter = widgets.Button(description="+ Filter", layout=widgets.Layout(width='75px', height='28px'))
+    btn_add_filter = widgets.Button(description="+ Filter", layout=widgets.Layout(width='70px', height='26px'))
     btn_add_filter.add_class("raj_btn_add_filter")
 
-    btn_run_filter = widgets.Button(description="⚡ Run", layout=widgets.Layout(width='70px', height='28px'))
+    btn_run_filter = widgets.Button(description="⚡ Run", layout=widgets.Layout(width='65px', height='26px'))
     btn_run_filter.add_class("raj_btn_run_filter")
 
-    btn_reset_filters = widgets.Button(description="↺ Reset", layout=widgets.Layout(width='70px', height='28px'))
+    btn_reset_filters = widgets.Button(description="↺ Reset", layout=widgets.Layout(width='65px', height='26px'))
     btn_reset_filters.add_class("raj_btn_secondary")
 
     status_code_box = widgets.HTML(value="")
@@ -520,7 +519,6 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
                 continue
             
             is_checked = (col in pending_cols)
-            # Display variable name only (no datatype text) in card pill
             chk = widgets.Checkbox(
                 value=is_checked,
                 description=str(col),
@@ -551,7 +549,27 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
         if not col_names:
             return
         
-        col_dd = widgets.Dropdown(options=col_names, layout=widgets.Layout(flex='1 1 32%', min_width='75px', max_width='115px', height='28px'))
+        # Row-level Grouping (G1, G2, G3, G4)
+        grp_dd = widgets.Dropdown(
+            options=['G1', 'G2', 'G3', 'G4'], 
+            value='G1', 
+            layout=widgets.Layout(width='46px', height='26px'),
+            tooltip="Filter Group (e.g., G1, G2)"
+        )
+        
+        # Row-level Boolean logic connector (AND / OR)
+        logic_dd = widgets.Dropdown(
+            options=['AND', 'OR'], 
+            value='AND', 
+            layout=widgets.Layout(width='50px', height='26px'),
+            tooltip="Conjunction logic (AND / OR)"
+        )
+        
+        col_dd = widgets.Dropdown(
+            options=col_names, 
+            layout=widgets.Layout(flex='1 1 75px', min_width='65px', max_width='105px', height='26px')
+        )
+        
         op_dd = widgets.Dropdown(
             options=[
                 ('contains', 'contains'),
@@ -567,15 +585,19 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
                 ('is null', 'is_null')
             ],
             value='contains',
-            layout=widgets.Layout(flex='1 1 30%', min_width='70px', max_width='95px', height='28px'))
-        val_txt = widgets.Text(placeholder="Val...", layout=widgets.Layout(flex='1 1 30%', min_width='65px', max_width='95px', height='28px'))
-        btn_del = widgets.Button(description="✕", layout=widgets.Layout(width='24px', height='24px'))
+            layout=widgets.Layout(width='78px', height='26px')
+        )
+        
+        val_txt = widgets.Text(placeholder="Val...", layout=widgets.Layout(flex='1 1 55px', min_width='50px', max_width='80px', height='26px'))
+        btn_del = widgets.Button(description="✕", layout=widgets.Layout(width='22px', height='22px'))
         btn_del.add_class("raj_btn_danger")
 
-        row_box = widgets.HBox([col_dd, op_dd, val_txt, btn_del], layout=widgets.Layout(margin='1px 0', align_items='center', width='100%'))
+        row_box = widgets.HBox([grp_dd, logic_dd, col_dd, op_dd, val_txt, btn_del], layout=widgets.Layout(margin='1px 0', align_items='center', width='100%'))
         
         filter_item = {
             "widget": row_box,
+            "grp_dd": grp_dd,
+            "logic_dd": logic_dd,
             "col_dd": col_dd,
             "op_dd": op_dd,
             "val_txt": val_txt
@@ -605,58 +627,76 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
         all_col_names = dfs_metadata[current_df_name]["col_names"]
         t0 = time.time()
 
-        # Build Polars expression dynamically
-        filter_exprs = []
-        code_snippets = []
+        # Build Polars expression dynamically with Grouping & AND/OR Logic
+        group_expr_dict = {}
+        group_code_dict = {}
 
         for f in active_filters:
+            grp = f["grp_dd"].value
+            logic = f["logic_dd"].value
             col = f["col_dd"].value
             op = f["op_dd"].value
             val = f["val_txt"].value.strip()
             dtype_str = col_types.get(col, "")
 
+            # Generate individual row expression & code
+            row_expr = None
+            row_code = ""
+
             if op == "is_not_null":
-                filter_exprs.append(pl.col(col).is_not_null())
-                code_snippets.append(f'pl.col("{col}").is_not_null()')
+                row_expr = pl.col(col).is_not_null()
+                row_code = f'pl.col("{col}").is_not_null()'
             elif op == "is_null":
-                filter_exprs.append(pl.col(col).is_null())
-                code_snippets.append(f'pl.col("{col}").is_null()')
+                row_expr = pl.col(col).is_null()
+                row_code = f'pl.col("{col}").is_null()'
             elif val:
                 if op == "contains":
-                    filter_exprs.append(pl.col(col).cast(pl.Utf8).str.contains(val, literal=True))
-                    code_snippets.append(f'pl.col("{col}").cast(pl.Utf8).str.contains(r"{val}", literal=True)')
+                    row_expr = pl.col(col).cast(pl.Utf8).str.contains(val, literal=True)
+                    row_code = f'pl.col("{col}").cast(pl.Utf8).str.contains(r"{val}", literal=True)'
                 elif op == "starts_with":
-                    filter_exprs.append(pl.col(col).cast(pl.Utf8).str.starts_with(val))
-                    code_snippets.append(f'pl.col("{col}").cast(pl.Utf8).str.starts_with("{val}")')
+                    row_expr = pl.col(col).cast(pl.Utf8).str.starts_with(val)
+                    row_code = f'pl.col("{col}").cast(pl.Utf8).str.starts_with("{val}")'
                 elif op == "ends_with":
-                    filter_exprs.append(pl.col(col).cast(pl.Utf8).str.ends_with(val))
-                    code_snippets.append(f'pl.col("{col}").cast(pl.Utf8).str.ends_with("{val}")')
+                    row_expr = pl.col(col).cast(pl.Utf8).str.ends_with(val)
+                    row_code = f'pl.col("{col}").cast(pl.Utf8).str.ends_with("{val}")'
                 elif op == "==":
                     if "Int" in dtype_str or "Float" in dtype_str:
                         try:
                             num = float(val) if "." in val else int(val)
-                            filter_exprs.append(pl.col(col) == num)
-                            code_snippets.append(f'pl.col("{col}") == {num}')
+                            row_expr = pl.col(col) == num
+                            row_code = f'pl.col("{col}") == {num}'
                         except Exception:
-                            filter_exprs.append(pl.col(col).cast(pl.Utf8) == val)
-                            code_snippets.append(f'pl.col("{col}").cast(pl.Utf8) == "{val}"')
+                            row_expr = pl.col(col).cast(pl.Utf8) == val
+                            row_code = f'pl.col("{col}").cast(pl.Utf8) == "{val}"'
                     else:
-                        filter_exprs.append(pl.col(col).cast(pl.Utf8) == val)
-                        code_snippets.append(f'pl.col("{col}") == "{val}"')
+                        row_expr = pl.col(col).cast(pl.Utf8) == val
+                        row_code = f'pl.col("{col}") == "{val}"'
                 elif op == "!=":
-                    filter_exprs.append(pl.col(col).cast(pl.Utf8) != val)
-                    code_snippets.append(f'pl.col("{col}").cast(pl.Utf8) != "{val}"')
+                    row_expr = pl.col(col).cast(pl.Utf8) != val
+                    row_code = f'pl.col("{col}").cast(pl.Utf8) != "{val}"'
                 elif op in (">", ">=", "<", "<="):
                     try:
                         num = float(val) if "." in val else int(val)
-                        if op == ">": filter_exprs.append(pl.col(col) > num)
-                        elif op == ">=": filter_exprs.append(pl.col(col) >= num)
-                        elif op == "<": filter_exprs.append(pl.col(col) < num)
-                        elif op == "<=": filter_exprs.append(pl.col(col) <= num)
-                        code_snippets.append(f'pl.col("{col}") {op} {num}')
+                        if op == ">": row_expr = pl.col(col) > num
+                        elif op == ">=": row_expr = pl.col(col) >= num
+                        elif op == "<": row_expr = pl.col(col) < num
+                        elif op == "<=": row_expr = pl.col(col) <= num
+                        row_code = f'pl.col("{col}") {op} {num}'
                     except Exception:
-                        filter_exprs.append(pl.col(col).cast(pl.Utf8) > val)
-                        code_snippets.append(f'pl.col("{col}").cast(pl.Utf8) {op} "{val}"')
+                        row_expr = pl.col(col).cast(pl.Utf8) > val
+                        row_code = f'pl.col("{col}").cast(pl.Utf8) {op} "{val}"'
+
+            if row_expr is not None:
+                if grp not in group_expr_dict:
+                    group_expr_dict[grp] = row_expr
+                    group_code_dict[grp] = row_code
+                else:
+                    if logic == "OR":
+                        group_expr_dict[grp] = group_expr_dict[grp] | row_expr
+                        group_code_dict[grp] = f"({group_code_dict[grp]} | {row_code})"
+                    else:
+                        group_expr_dict[grp] = group_expr_dict[grp] & row_expr
+                        group_code_dict[grp] = f"({group_code_dict[grp]} & {row_code})"
 
         # Selected columns projection
         cols_to_show = [c for c in all_col_names if c in applied_columns]
@@ -667,23 +707,23 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
 
         # Execute Pushdown Query: Works with both LazyFrame and DataFrame
         try:
+            # Combine all group expressions with AND
+            combined_filter_expr = None
+            if group_expr_dict:
+                for g_expr in group_expr_dict.values():
+                    combined_filter_expr = g_expr if combined_filter_expr is None else (combined_filter_expr & g_expr)
+
             if is_lazy:
                 lf_plan = obj
-                if filter_exprs:
-                    combined_expr = filter_exprs[0]
-                    for expr in filter_exprs[1:]:
-                        combined_expr = combined_expr & expr
-                    lf_plan = lf_plan.filter(combined_expr)
+                if combined_filter_expr is not None:
+                    lf_plan = lf_plan.filter(combined_filter_expr)
                 
                 matched_count = lf_plan.select(pl.len()).collect().item()
                 slice_df = lf_plan.select(cols_to_show).limit(current_limit).collect()
             else:
                 df_data = obj
-                if filter_exprs:
-                    combined_expr = filter_exprs[0]
-                    for expr in filter_exprs[1:]:
-                        combined_expr = combined_expr & expr
-                    filtered_df = df_data.filter(combined_expr)
+                if combined_filter_expr is not None:
+                    filtered_df = df_data.filter(combined_filter_expr)
                 else:
                     filtered_df = df_data
                 matched_count = filtered_df.shape[0]
@@ -698,13 +738,13 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
         elapsed_ms = (time.time() - t0) * 1000
         visible_rows_count = slice_df.shape[0]
 
-        # --- ADAPTIVE WIDTH CALCULATION: min(150, content_fit_width) ---
+        # --- ADAPTIVE WIDTH CALCULATION ---
         MAX_PREDEFINED_CAP = 150
         MIN_FLOOR_WIDTH = 55
         col_widths = {}
 
         for col in cols_to_show:
-            header_char_len = len(str(col)) + 5  # Space for col name + type badge + sort icon
+            header_char_len = len(str(col)) + 5
             max_val_len = 0
             for v in slice_df[col].head(100):
                 if v is not None:
@@ -714,11 +754,18 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
             content_fit_width = int(char_count * 7.5) + 20
             col_widths[col] = min(MAX_PREDEFINED_CAP, max(MIN_FLOOR_WIDTH, content_fit_width))
 
-        # Status & Generated Code Info Box with Compact Multiline Line-Height
-        if is_lazy:
-            code_str = f'{current_df_name}.filter({" & ".join(code_snippets)}).select({cols_to_show}).limit({visible_rows_count}).collect()' if code_snippets else f'{current_df_name}.select({cols_to_show}).limit({visible_rows_count}).collect()'
+        # Status & Generated Code Info Box with Nested Logic String
+        if group_code_dict:
+            code_filter_clause = " & ".join(f"({c})" for c in group_code_dict.values())
+            if is_lazy:
+                code_str = f'{current_df_name}.filter({code_filter_clause}).select({cols_to_show}).limit({visible_rows_count}).collect()'
+            else:
+                code_str = f'{current_df_name}.filter({code_filter_clause})'
         else:
-            code_str = f'{current_df_name}.filter({" & ".join(code_snippets)})' if code_snippets else f'{current_df_name}.head({visible_rows_count})'
+            if is_lazy:
+                code_str = f'{current_df_name}.select({cols_to_show}).limit({visible_rows_count}).collect()'
+            else:
+                code_str = f'{current_df_name}.head({visible_rows_count})'
         
         status_html = f"""
         <div style="background:#0f172a; border:1px solid #334155; border-radius:6px; padding:4px 8px; margin:0 0 6px 0; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:6px; font-size:11px;">
@@ -962,25 +1009,25 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
     # --- 70% / 30% SIDE-BY-SIDE CONTROLS LAYOUT ---
     col_section_box = widgets.VBox([
         widgets.HBox([
-            widgets.HTML("<span style='font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase; line-height:28px;'>Columns:</span>"),
+            widgets.HTML("<span style='font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase; line-height:26px;'>Columns:</span>"),
             col_search_input,
             btn_select_all_cols,
             btn_clear_all_cols,
             btn_apply_cols
-        ], layout=widgets.Layout(align_items='center', gap='4px', margin='0 0 4px 0', width='100%')),
+        ], layout=widgets.Layout(align_items='center', gap='3px', margin='0 0 3px 0', width='100%')),
         col_checklist_box
     ], layout=widgets.Layout(flex='7 7 70%', min_width='300px', padding='6px 8px', margin='0'))
     col_section_box.add_class("panel_card")
 
     filter_section_box = widgets.VBox([
         widgets.HBox([
-            widgets.HTML("<span style='font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase; line-height:28px;'>Filters:</span>"),
+            widgets.HTML("<span style='font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase; line-height:26px;'>Filters:</span>"),
             btn_add_filter,
             btn_run_filter,
             btn_reset_filters
-        ], layout=widgets.Layout(align_items='center', gap='4px', margin='0 0 4px 0', width='100%')),
+        ], layout=widgets.Layout(align_items='center', gap='3px', margin='0 0 3px 0', width='100%')),
         filter_rows_container
-    ], layout=widgets.Layout(flex='3 3 30%', min_width='220px', padding='6px 8px', margin='0'))
+    ], layout=widgets.Layout(flex='3 3 30%', min_width='250px', padding='6px 8px', margin='0'))
     filter_section_box.add_class("panel_card")
 
     side_by_side_controls = widgets.HBox([
@@ -990,10 +1037,10 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
 
     # Integrated DF Header Bar
     df_embedded_bar = widgets.HBox([
-        widgets.HTML("<span style='font-size:11px; font-weight:700; color:#cbd5e1; margin-right:6px; line-height:30px;'>📊 ACTIVE DATAFRAME:</span>"),
+        widgets.HTML("<span style='font-size:11px; font-weight:700; color:#cbd5e1; margin-right:6px; line-height:28px;'>📊 ACTIVE DATAFRAME:</span>"),
         df_dropdown,
         shape_label
-    ], layout=widgets.Layout(align_items='center', margin='0 0 6px 0', padding='4px 8px', border_bottom='1px solid #334155', width='100%', min_height='38px'))
+    ], layout=widgets.Layout(align_items='center', margin='0 0 6px 0', padding='4px 8px', border_bottom='1px solid #334155', width='100%', min_height='36px'))
     df_embedded_bar.add_class("panel_card")
 
     quick_preview_controls_box = widgets.VBox([
@@ -1085,12 +1132,12 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
             <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px;">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">DataFrame:</span>
-                    <select id="{uid}_inspectorDfSelector" style="background: #0f172a; color: #38bdf8; font-family: monospace; font-size: 12px; border: 1px solid #475569; border-radius: 6px; padding: 4px 8px; outline: none; cursor: pointer; height: 30px;"></select>
+                    <select id="{uid}_inspectorDfSelector" style="background: #0f172a; color: #38bdf8; font-family: monospace; font-size: 12px; border: 1px solid #475569; border-radius: 6px; padding: 4px 8px; outline: none; cursor: pointer; height: 28px;"></select>
                     <span id="{uid}_inspectorShapeBadge" style="font-size: 11px; font-family: monospace; background: #0f172a; color: #38bdf8; padding: 4px 10px; border-radius: 6px; font-weight: 600; border: 1px solid #334155;">0 rows</span>
                 </div>
                 <div>
                     <input type="text" id="{uid}_inspectorSearchInput" placeholder="Filter column or type..." 
-                           style="background: #0f172a; color: white; font-size: 11px; border: 1px solid #475569; border-radius: 6px; padding: 4px 8px; outline: none; width: 190px; height: 28px;">
+                           style="background: #0f172a; color: white; font-size: 11px; border: 1px solid #475569; border-radius: 6px; padding: 4px 8px; outline: none; width: 190px; height: 26px;">
                 </div>
             </div>
 
@@ -1369,7 +1416,6 @@ with pl.Config(tbl_rows=100, tbl_cols=50, fmt_str_lengths=100):
 
     preview_host_div = widgets.HTML(f"<div id='{uid}_preview_host' style='display:block; width:100%;'></div>")
 
-    # The Master Container widget
     master_box = widgets.VBox([
         widgets.HTML(toolkit_html),
         preview_host_div,
@@ -1405,3 +1451,6 @@ with pl.Config(tbl_rows=100, tbl_cols=50, fmt_str_lengths=100):
     if save_html:
         with open(filename, "w", encoding="utf-8") as f:
             f.write(toolkit_html)
+
+# Alias for backwards compatibility
+launch_polars_helper = rp
