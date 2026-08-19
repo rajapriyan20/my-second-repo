@@ -6,17 +6,17 @@ import ipywidgets as widgets
 import polars as pl
 from IPython.display import HTML, display
 
-TOOLKIT_VERSION = "v3.0"
+TOOLKIT_VERSION = "v3.1"
 
 def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filename: str = "polars_jupyter_helper.html"):
     """
-    Rajapriyan Coding Toolkit (v3.0):
-    - Side-by-Side Column Selection & Parallel Filter Builders
-    - 100% Dark Blue/Slate Theme (Zero white gaps or background bleed)
-    - Tactile Rounded Gradient Buttons (All, Clear, Apply, Filter, Run, Reset)
-    - Full-Dataset Polars Query Engine (handles millions of rows in ms)
-    - Excel/SAS Viya Mouse-Draggable Column Resizing + 3-State Sorting
-    - Compact Launcher Pill Button
+    Rajapriyan Coding Toolkit (v3.1):
+    - Embedded Header Toolbar (DataFrame selector + shape info in header row)
+    - Maximized Vertical Screen Space (Zero white gaps, 540px+ table viewport)
+    - Side-by-Side Compact Column Selection & Parallel Filter Panels
+    - Full-Dataset Polars Engine (filters millions of rows in ms)
+    - Mouse-Draggable Column Header Resizing + 3-State Sorting (Asc/Desc/Orig)
+    - Tactile Rounded Gradient Buttons & In-Notebook Collapsible Launcher
     """
     # 1. Discover Polars DataFrames in active Jupyter interactive session
     try:
@@ -67,10 +67,10 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
 
     metadata_json = json.dumps(dfs_metadata)
 
-    # 2. Master CSS Styles (Forces Dark Blue Everywhere & Clean Tactile Buttons)
+    # 2. Master CSS Styles (Maximized Vertical Space & Anti-White-Gap Layout)
     css_styles = f"""
     <style>
-        /* Force Root Dark Palette across all Jupyter / ipywidgets elements */
+        /* Force Root Dark Palette across all wrappers */
         #{uid}_root,
         #{uid}_widget_pane_container,
         #{uid}_widget_pane_container .widget-box,
@@ -90,8 +90,8 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             background-color: #0f172a !important;
             background: #0f172a !important;
             border: 1px solid #334155 !important;
-            border-radius: 8px !important;
-            padding: 8px 10px !important;
+            border-radius: 6px !important;
+            padding: 6px 8px !important;
         }}
 
         #{uid}_widget_pane_container .widget-label {{
@@ -101,7 +101,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             text-transform: uppercase !important;
         }}
 
-        /* Modern Rounded Search Boxes & Text Inputs */
+        /* Modern Rounded Inputs */
         #{uid}_widget_pane_container input[type="text"],
         #{uid}_root input[type="text"],
         #{uid}_widget_pane_container select,
@@ -111,11 +111,12 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             border: 1px solid #475569 !important;
             border-radius: 6px !important;
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
-            font-size: 12px !important;
-            padding: 4px 8px !important;
+            font-size: 11px !important;
+            padding: 3px 8px !important;
             outline: none !important;
             box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4) !important;
             transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+            height: 26px !important;
         }}
         #{uid}_widget_pane_container input[type="text"]:focus,
         #{uid}_root input[type="text"]:focus,
@@ -125,12 +126,12 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.25) !important;
         }}
 
-        /* Base Tactile Button Reset */
+        /* Tactile Rounded Buttons */
         #{uid}_widget_pane_container .widget-button button {{
             border-radius: 6px !important;
             font-size: 11px !important;
             font-weight: 600 !important;
-            padding: 3px 10px !important;
+            padding: 2px 10px !important;
             cursor: pointer !important;
             transition: all 0.15s ease-in-out !important;
             box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
@@ -148,16 +149,11 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             filter: brightness(0.95) !important;
         }}
 
-        /* Buttons: All, Clear, Reset */
+        /* Buttons: Secondary (All, Clear, Reset) */
         .{uid}_btn_secondary button {{
             background: linear-gradient(180deg, #334155, #1e293b) !important;
             color: #f1f5f9 !important;
             border: 1px solid #475569 !important;
-        }}
-        .{uid}_btn_secondary button:hover {{
-            background: linear-gradient(180deg, #475569, #334155) !important;
-            border-color: #64748b !important;
-            color: #ffffff !important;
         }}
 
         /* Button: Apply */
@@ -199,10 +195,10 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         .{uid}_col_chk_pill {{
             background-color: #0f172a !important;
             border: 1px solid #334155 !important;
-            border-radius: 6px !important;
-            padding: 1px 6px !important;
-            margin: 2px 3px !important;
-            height: 24px !important;
+            border-radius: 5px !important;
+            padding: 0 5px !important;
+            margin: 1px 2px !important;
+            height: 20px !important;
             display: inline-flex !important;
             align-items: center !important;
             transition: all 0.15s ease !important;
@@ -218,12 +214,12 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         .{uid}_col_chk_pill input[type="checkbox"] {{
             accent-color: #06b6d4 !important;
             cursor: pointer !important;
-            margin-right: 4px !important;
+            margin-right: 3px !important;
         }}
         .{uid}_col_chk_pill label span {{
             color: #cbd5e1 !important;
             font-family: ui-monospace, monospace !important;
-            font-size: 11px !important;
+            font-size: 10px !important;
             font-weight: 500 !important;
             cursor: pointer !important;
         }}
@@ -251,7 +247,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             text-transform: uppercase !important;
             border-bottom: 2px solid #334155 !important;
             border-right: 1px solid #334155 !important;
-            padding: 8px 10px !important;
+            padding: 6px 10px !important;
             text-align: left !important;
             user-select: none !important;
             z-index: 10 !important;
@@ -267,7 +263,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         table.{uid}_res_table td {{
             font-family: ui-monospace, monospace !important;
             font-size: 12px !important;
-            padding: 6px 10px !important;
+            padding: 5px 10px !important;
             border-bottom: 1px solid #293548 !important;
             border-right: 1px solid #293548 !important;
             overflow: hidden !important;
@@ -310,7 +306,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             color: #ffffff !important;
             border: 1px solid rgba(255, 255, 255, 0.25) !important;
             border-radius: 20px !important;
-            padding: 6px 16px !important;
+            padding: 5px 14px !important;
             font-size: 12px !important;
             font-weight: 700 !important;
             cursor: pointer !important;
@@ -327,11 +323,11 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         .{uid}_tab_btn {{
             background: transparent;
             border: none;
-            border-bottom: 3px solid transparent;
+            border-bottom: 2px solid transparent;
             color: #94a3b8;
             font-weight: 500;
-            font-size: 13px;
-            padding: 6px 12px;
+            font-size: 12px;
+            padding: 4px 8px;
             cursor: pointer;
             transition: all 0.15s ease-in-out;
             white-space: nowrap;
@@ -340,7 +336,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             color: #e2e8f0;
         }}
         .{uid}_tab_btn.tab-active {{
-            border-bottom: 3px solid #06b6d4 !important;
+            border-bottom: 2px solid #06b6d4 !important;
             color: #38bdf8 !important;
             font-weight: 700 !important;
         }}
@@ -349,48 +345,48 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
 
     # 3. Interactive Quick Preview Engine (Python Polars Backend)
     preview_output = widgets.Output()
-    filter_rows_container = widgets.VBox([], layout=widgets.Layout(max_height='85px', overflow='auto', padding='2px'))
+    filter_rows_container = widgets.VBox([], layout=widgets.Layout(max_height='68px', overflow='auto', padding='0px'))
     active_filters = []
     
     current_df_name = list(dfs_dict.keys())[0] if dfs_dict else None
     applied_columns = set()
     pending_cols = set()
 
-    # Toolbar Controls
+    # Toolbar Controls (Embedded Under Header)
     df_dropdown = widgets.Dropdown(
         options=list(dfs_dict.keys()) if dfs_dict else ["No DataFrame Found"],
         value=current_df_name,
-        description='DataFrame:',
-        style={'description_width': '80px'},
-        layout=widgets.Layout(width='280px')
+        description='DF:',
+        style={'description_width': '25px'},
+        layout=widgets.Layout(width='200px')
     )
     
     shape_label = widgets.HTML(
-        value=f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:5px 10px; border-radius:6px; font-size:12px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape'] if current_df_name else '0 rows'}</span>"
+        value=f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape'] if current_df_name else '0 rows'}</span>"
     )
 
     # Column Controls (Side-by-Side Sizing)
-    col_search_input = widgets.Text(placeholder="🔍 Search...", layout=widgets.Layout(width='125px'))
+    col_search_input = widgets.Text(placeholder="🔍 Search...", layout=widgets.Layout(width='110px'))
     
-    btn_select_all_cols = widgets.Button(description="All", layout=widgets.Layout(width='55px'))
+    btn_select_all_cols = widgets.Button(description="All", layout=widgets.Layout(width='45px'))
     btn_select_all_cols.add_class(f"{uid}_btn_secondary")
     
-    btn_clear_all_cols = widgets.Button(description="Clear", layout=widgets.Layout(width='60px'))
+    btn_clear_all_cols = widgets.Button(description="Clear", layout=widgets.Layout(width='50px'))
     btn_clear_all_cols.add_class(f"{uid}_btn_secondary")
     
-    btn_apply_cols = widgets.Button(description="✓ Apply", layout=widgets.Layout(width='85px'))
+    btn_apply_cols = widgets.Button(description="✓ Apply", layout=widgets.Layout(width='75px'))
     btn_apply_cols.add_class(f"{uid}_btn_apply")
 
-    col_checklist_box = widgets.HBox([], layout=widgets.Layout(flex_flow='row wrap', max_height='85px', overflow='auto', padding='4px', background_color='#0f172a'))
+    col_checklist_box = widgets.HBox([], layout=widgets.Layout(flex_flow='row wrap', max_height='68px', overflow='auto', padding='2px', background_color='#0f172a'))
 
     # Filter Controls (Side-by-Side Sizing)
-    btn_add_filter = widgets.Button(description="+ Filter", layout=widgets.Layout(width='90px'))
+    btn_add_filter = widgets.Button(description="+ Filter", layout=widgets.Layout(width='80px'))
     btn_add_filter.add_class(f"{uid}_btn_add_filter")
 
-    btn_run_filter = widgets.Button(description="⚡ Run", layout=widgets.Layout(width='85px'))
+    btn_run_filter = widgets.Button(description="⚡ Run", layout=widgets.Layout(width='75px'))
     btn_run_filter.add_class(f"{uid}_btn_run_filter")
 
-    btn_reset_filters = widgets.Button(description="↺ Reset", layout=widgets.Layout(width='80px'))
+    btn_reset_filters = widgets.Button(description="↺ Reset", layout=widgets.Layout(width='70px'))
     btn_reset_filters.add_class(f"{uid}_btn_secondary")
 
     status_code_box = widgets.HTML(value="")
@@ -413,7 +409,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
                 value=is_checked,
                 description=f"{col} ({df_obj[col].dtype})",
                 indent=False,
-                layout=widgets.Layout(width='auto', margin='2px 3px')
+                layout=widgets.Layout(width='auto', margin='1px 2px')
             )
             chk.add_class(f"{uid}_col_chk_pill")
             if is_checked:
@@ -439,7 +435,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             return
         df_obj = dfs_dict[current_df_name]
         
-        col_dd = widgets.Dropdown(options=df_obj.columns, layout=widgets.Layout(width='150px'))
+        col_dd = widgets.Dropdown(options=df_obj.columns, layout=widgets.Layout(width='140px'))
         op_dd = widgets.Dropdown(
             options=[
                 ('contains', 'contains'),
@@ -455,13 +451,13 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
                 ('is null', 'is_null')
             ],
             value='contains',
-            layout=widgets.Layout(width='130px')
+            layout=widgets.Layout(width='120px')
         )
-        val_txt = widgets.Text(placeholder="Value...", layout=widgets.Layout(width='140px'))
-        btn_del = widgets.Button(description="✕", layout=widgets.Layout(width='32px'))
+        val_txt = widgets.Text(placeholder="Value...", layout=widgets.Layout(width='130px'))
+        btn_del = widgets.Button(description="✕", layout=widgets.Layout(width='28px'))
         btn_del.add_class(f"{uid}_btn_danger")
 
-        row_box = widgets.HBox([col_dd, op_dd, val_txt, btn_del], layout=widgets.Layout(margin='2px 0', align_items='center'))
+        row_box = widgets.HBox([col_dd, op_dd, val_txt, btn_del], layout=widgets.Layout(margin='1px 0', align_items='center'))
         
         filter_item = {
             "widget": row_box,
@@ -483,7 +479,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         if not current_df_name or current_df_name not in dfs_dict:
             with preview_output:
                 preview_output.clear_output()
-                display(HTML("<div style='padding:16px; color:#64748b;'>No active Polars DataFrame selected.</div>"))
+                display(HTML("<div style='padding:12px; color:#64748b;'>No active Polars DataFrame selected.</div>"))
             return
 
         df_obj = dfs_dict[current_df_name]
@@ -554,7 +550,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         except Exception as err:
             with preview_output:
                 preview_output.clear_output()
-                display(HTML(f"<div style='padding:16px; color:#f87171;'>Polars Filter Error: {html.escape(str(err))}</div>"))
+                display(HTML(f"<div style='padding:12px; color:#f87171;'>Polars Filter Error: {html.escape(str(err))}</div>"))
             return
 
         elapsed_ms = (time.time() - t0) * 1000
@@ -569,15 +565,15 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
 
         slice_df = filtered_df.select(cols_to_show).head(preview_rows)
 
-        # Status & Generated Code Info Box
+        # Status & Generated Code Info Box (Ultra-Compact Single-Row Strip)
         code_str = f'{current_df_name}.filter({" & ".join(code_snippets)})' if code_snippets else f'{current_df_name}.head({preview_rows})'
         status_html = f"""
-        <div style="background:#0f172a; border:1px solid #334155; border-radius:8px; padding:8px 12px; margin:0 0 10px 0;">
-            <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; margin-bottom:4px;">
-                <span style="color:#34d399; font-weight:600;">⚡ Matched {matched_count:,} of {df_obj.shape[0]:,} rows <span style="color:#94a3b8; font-weight:normal;">({elapsed_ms:.1f} ms)</span></span>
-                <span style="color:#38bdf8; font-family:monospace; font-size:11px;">Showing top {min(preview_rows, matched_count)} rows × {len(cols_to_show)} cols (Click header to sort · Drag edge to resize)</span>
+        <div style="background:#0f172a; border:1px solid #334155; border-radius:6px; padding:5px 10px; margin:0 0 6px 0; display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:11px;">
+            <div style="display:flex; align-items:center; gap:8px; white-space:nowrap;">
+                <span style="color:#34d399; font-weight:600;">⚡ {matched_count:,} / {df_obj.shape[0]:,} rows <span style="color:#94a3b8; font-weight:normal;">({elapsed_ms:.1f} ms)</span></span>
+                <span style="color:#38bdf8; font-family:monospace;">({min(preview_rows, matched_count)} rows × {len(cols_to_show)} cols)</span>
             </div>
-            <div style="font-family:monospace; font-size:11px; color:#94a3b8; background:#1e293b; padding:5px 10px; border-radius:5px; overflow-x:auto;">
+            <div style="font-family:monospace; font-size:10px; color:#94a3b8; background:#1e293b; padding:2px 8px; border-radius:4px; overflow-x:auto; flex:1; text-align:right;">
                 <span style="color:#38bdf8;">Code:</span> {html.escape(code_str)}
             </div>
         </div>
@@ -586,24 +582,24 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
 
         # Table Geometry with 3-State Sort & Draggable Width Resizing
         table_id = f"{uid}_res_table_el"
-        th_cells = f'<th style="width:50px; min-width:50px; max-width:50px; text-align:center; position:relative; cursor:default;" data-no-sort="true">#</th>'
+        th_cells = f'<th style="width:45px; min-width:45px; max-width:45px; text-align:center; position:relative; cursor:default;" data-no-sort="true">#</th>'
         for col in cols_to_show:
-            th_cells += f'<th style="width:150px; min-width:150px; max-width:150px; position:relative;" title="Click to sort (Asc/Desc/Orig) · Drag edge to resize" data-sort="none"><span class="col-title">{html.escape(col)}</span><span class="sort-icon" style="color:#64748b; margin-left:4px; font-size:10px;"></span><div class="{uid}_resizer"></div></th>'
+            th_cells += f'<th style="width:150px; min-width:150px; max-width:150px; position:relative;" title="Click to sort (Asc/Desc/Orig) · Drag edge to resize" data-sort="none"><span class="col-title">{html.escape(col)}</span><span class="sort-icon" style="color:#64748b; margin-left:3px; font-size:9px;"></span><div class="{uid}_resizer"></div></th>'
         
         tbody_rows = ""
         for r_idx, row in enumerate(slice_df.iter_rows()):
             row_class = "row-even" if (r_idx % 2 == 0) else "row-odd"
-            td_cells = f'<td style="width:50px; min-width:50px; max-width:50px; text-align:center; color:#64748b;" data-orig-row="{r_idx}">{r_idx + 1}</td>'
+            td_cells = f'<td style="width:45px; min-width:45px; max-width:45px; text-align:center; color:#64748b;" data-orig-row="{r_idx}">{r_idx + 1}</td>'
             for val in row:
                 v_str = str(val) if val is not None else "null"
                 td_cells += f'<td style="width:150px; min-width:150px; max-width:150px;" title="{html.escape(v_str)}">{html.escape(v_str)}</td>'
             tbody_rows += f'<tr class="{row_class}" data-orig-idx="{r_idx}">{td_cells}</tr>'
 
         if matched_count == 0:
-            tbody_rows = "<tr><td colspan='100' style='padding:20px; text-align:center; color:#94a3b8;'>No rows matched the filter criteria across the DataFrame.</td></tr>"
+            tbody_rows = "<tr><td colspan='100' style='padding:18px; text-align:center; color:#94a3b8;'>No rows matched the filter criteria across the DataFrame.</td></tr>"
 
         table_html = f"""
-        <div style="max-height:440px; overflow:auto; border:1px solid #334155; border-radius:8px; background-color:#0f172a;">
+        <div style="max-height:540px; overflow:auto; border:1px solid #334155; border-radius:6px; background-color:#0f172a;">
             <table id="{table_id}" class="{uid}_res_table">
                 <thead><tr>{th_cells}</tr></thead>
                 <tbody>{tbody_rows}</tbody>
@@ -723,7 +719,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         current_df_name = change['new']
         if current_df_name and current_df_name in dfs_dict:
             df_obj = dfs_dict[current_df_name]
-            shape_label.value = f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:5px 10px; border-radius:6px; font-size:12px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape']}</span>"
+            shape_label.value = f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape']}</span>"
             pending_cols.clear()
             pending_cols.update(df_obj.columns[:8])
             applied_columns.clear()
@@ -783,48 +779,48 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         applied_columns.update(pending_cols)
         update_col_checkboxes()
 
-    # --- SIDE-BY-SIDE CONTROLS LAYOUT ---
+    # --- SIDE-BY-SIDE ULTRA-COMPACT CONTROLS LAYOUT ---
     col_section_box = widgets.VBox([
         widgets.HBox([
-            widgets.HTML("<span style='font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase;'>Columns:</span>"),
+            widgets.HTML("<span style='font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;'>Columns:</span>"),
             col_search_input,
             btn_select_all_cols,
             btn_clear_all_cols,
             btn_apply_cols
-        ], layout=widgets.Layout(align_items='center', gap='4px', margin='0 0 6px 0', width='100%')),
+        ], layout=widgets.Layout(align_items='center', gap='3px', margin='0 0 3px 0', width='100%')),
         col_checklist_box
-    ], layout=widgets.Layout(flex='1 1 50%', min_width='340px', padding='10px', background_color='#0f172a', border='1px solid #334155', border_radius='8px'))
+    ], layout=widgets.Layout(flex='1 1 50%', min_width='320px', padding='6px 8px', background_color='#0f172a', border='1px solid #334155', border_radius='6px'))
     col_section_box.add_class(f"{uid}_card_well")
 
     filter_section_box = widgets.VBox([
         widgets.HBox([
-            widgets.HTML("<span style='font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase;'>Filters:</span>"),
+            widgets.HTML("<span style='font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;'>Filters:</span>"),
             btn_add_filter,
             btn_run_filter,
             btn_reset_filters
-        ], layout=widgets.Layout(align_items='center', gap='4px', margin='0 0 6px 0', width='100%')),
+        ], layout=widgets.Layout(align_items='center', gap='3px', margin='0 0 3px 0', width='100%')),
         filter_rows_container
-    ], layout=widgets.Layout(flex='1 1 50%', min_width='340px', padding='10px', background_color='#0f172a', border='1px solid #334155', border_radius='8px'))
+    ], layout=widgets.Layout(flex='1 1 50%', min_width='320px', padding='6px 8px', background_color='#0f172a', border='1px solid #334155', border_radius='6px'))
     filter_section_box.add_class(f"{uid}_card_well")
 
-    # Middle Row: Side-by-Side Panels
     side_by_side_controls = widgets.HBox([
         col_section_box,
         filter_section_box
-    ], layout=widgets.Layout(width='100%', gap='10px', margin='0 0 10px 0', background_color='#1e293b', align_items='stretch'))
+    ], layout=widgets.Layout(width='100%', gap='6px', margin='0 0 6px 0', background_color='#1e293b', align_items='stretch'))
 
-    # Top Header Row: DataFrame selection with clean bottom divider line
-    df_header_row = widgets.HBox([
+    # Embedded DF Selection Header Row (Compact & Integrated)
+    df_embedded_header = widgets.HBox([
+        widgets.HTML("<span style='font-size:11px; font-weight:700; color:#f8fafc; margin-right:4px;'>📊 ACTIVE DATAFRAME:</span>"),
         df_dropdown,
         shape_label
-    ], layout=widgets.Layout(align_items='center', margin='0 0 10px 0', padding='0 0 10px 0', border_bottom='1px solid #334155', width='100%', background_color='#1e293b'))
+    ], layout=widgets.Layout(align_items='center', margin='0 0 6px 0', padding='4px 8px', border_bottom='1px solid #334155', width='100%', background_color='#0f172a', border_radius='6px'))
 
     quick_preview_box = widgets.VBox([
-        df_header_row,
+        df_embedded_header,
         side_by_side_controls,
         status_code_box,
         preview_output
-    ], layout=widgets.Layout(padding='12px', background_color='#1e293b', border_radius='10px', width='100%'))
+    ], layout=widgets.Layout(padding='6px 8px', background_color='#1e293b', border_radius='8px', width='100%'))
 
     widget_wrapper = widgets.Box([quick_preview_box], layout=widgets.Layout(display='block', background_color='#1e293b', width='100%'))
     widget_wrapper.add_class(f"{uid}_widget_pane_container")
@@ -835,28 +831,28 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
     # 4. Master Toolkit HTML (Inspector, Tabs, Inline Click Handlers & Cheatsheets)
     toolkit_html = f"""
     {css_styles}
-    <div id="{uid}_root" style="background-color: #0f172a; padding: 18px; border: 1px solid #334155; border-radius: 12px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5);">
+    <div id="{uid}_root" style="background-color: #0f172a; padding: 10px 14px; border: 1px solid #334155; border-radius: 10px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5);">
         
-        <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #334155; padding-bottom: 14px; margin-bottom: 16px;">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid #334155; padding-bottom: 8px; margin-bottom: 8px;">
             <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 20px;">🛠️</span>
-                <span style="font-size: 16px; font-weight: 700; color: #f1f5f9;">Rajapriyan coding toolkit</span>
+                <span style="font-size: 16px;">🛠️</span>
+                <span style="font-size: 14px; font-weight: 700; color: #f1f5f9; letter-spacing: 0.3px;">Rajapriyan coding toolkit</span>
             </div>
             
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <div style="display: flex; gap: 4px; overflow-x: auto; font-size: 13px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="display: flex; gap: 2px; overflow-x: auto; font-size: 12px;">
                     <button type="button" id="{uid}_btn_preview" class="{uid}_tab_btn tab-active" onclick="
                         var root = document.getElementById('{uid}_root');
-                        root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='3px solid transparent'; b.style.color='#94a3b8'; }});
-                        this.classList.add('tab-active'); this.style.borderBottom='3px solid #06b6d4'; this.style.color='#38bdf8';
+                        root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='2px solid transparent'; b.style.color='#94a3b8'; }});
+                        this.classList.add('tab-active'); this.style.borderBottom='2px solid #06b6d4'; this.style.color='#38bdf8';
                         root.querySelectorAll('.{uid}_pane').forEach(function(p){{ p.style.display='none'; }});
                         var w = document.querySelector('.{uid}_widget_pane_container'); if(w) w.style.display='block';
                     ">👁️ Quick Preview</button>
                     
                     <button type="button" id="{uid}_btn_inspector" class="{uid}_tab_btn" onclick="
                         var root = document.getElementById('{uid}_root');
-                        root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='3px solid transparent'; b.style.color='#94a3b8'; }});
-                        this.classList.add('tab-active'); this.style.borderBottom='3px solid #06b6d4'; this.style.color='#38bdf8';
+                        root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='2px solid transparent'; b.style.color='#94a3b8'; }});
+                        this.classList.add('tab-active'); this.style.borderBottom='2px solid #06b6d4'; this.style.color='#38bdf8';
                         root.querySelectorAll('.{uid}_pane').forEach(function(p){{ p.style.display='none'; }});
                         var p = document.getElementById('{uid}_pane_inspector'); if(p) p.style.display='block';
                         var w = document.querySelector('.{uid}_widget_pane_container'); if(w) w.style.display='none';
@@ -866,8 +862,8 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
                     
                     <button type="button" id="{uid}_btn_filter" class="{uid}_tab_btn" onclick="
                         var root = document.getElementById('{uid}_root');
-                        root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='3px solid transparent'; b.style.color='#94a3b8'; }});
-                        this.classList.add('tab-active'); this.style.borderBottom='3px solid #06b6d4'; this.style.color='#38bdf8';
+                        root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='2px solid transparent'; b.style.color='#94a3b8'; }});
+                        this.classList.add('tab-active'); this.style.borderBottom='2px solid #06b6d4'; this.style.color='#38bdf8';
                         root.querySelectorAll('.{uid}_pane').forEach(function(p){{ p.style.display='none'; }});
                         var p = document.getElementById('{uid}_pane_filter'); if(p) p.style.display='block';
                         var w = document.querySelector('.{uid}_widget_pane_container'); if(w) w.style.display='none';
@@ -875,8 +871,8 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
                     
                     <button type="button" id="{uid}_btn_freq" class="{uid}_tab_btn" onclick="
                         var root = document.getElementById('{uid}_root');
-                        root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='3px solid transparent'; b.style.color='#94a3b8'; }});
-                        this.classList.add('tab-active'); this.style.borderBottom='3px solid #06b6d4'; this.style.color='#38bdf8';
+                        root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='2px solid transparent'; b.style.color='#94a3b8'; }});
+                        this.classList.add('tab-active'); this.style.borderBottom='2px solid #06b6d4'; this.style.color='#38bdf8';
                         root.querySelectorAll('.{uid}_pane').forEach(function(p){{ p.style.display='none'; }});
                         var p = document.getElementById('{uid}_pane_freq'); if(p) p.style.display='block';
                         var w = document.querySelector('.{uid}_widget_pane_container'); if(w) w.style.display='none';
@@ -884,8 +880,8 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
                     
                     <button type="button" id="{uid}_btn_manip" class="{uid}_tab_btn" onclick="
                         var root = document.getElementById('{uid}_root');
-                        root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='3px solid transparent'; b.style.color='#94a3b8'; }});
-                        this.classList.add('tab-active'); this.style.borderBottom='3px solid #06b6d4'; this.style.color='#38bdf8';
+                        root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='2px solid transparent'; b.style.color='#94a3b8'; }});
+                        this.classList.add('tab-active'); this.style.borderBottom='2px solid #06b6d4'; this.style.color='#38bdf8';
                         root.querySelectorAll('.{uid}_pane').forEach(function(p){{ p.style.display='none'; }});
                         var p = document.getElementById('{uid}_pane_manip'); if(p) p.style.display='block';
                         var w = document.querySelector('.{uid}_widget_pane_container'); if(w) w.style.display='none';
@@ -893,43 +889,43 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
                     
                     <button type="button" id="{uid}_btn_options" class="{uid}_tab_btn" onclick="
                         var root = document.getElementById('{uid}_root');
-                        root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='3px solid transparent'; b.style.color='#94a3b8'; }});
-                        this.classList.add('tab-active'); this.style.borderBottom='3px solid #06b6d4'; this.style.color='#38bdf8';
+                        root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='2px solid transparent'; b.style.color='#94a3b8'; }});
+                        this.classList.add('tab-active'); this.style.borderBottom='2px solid #06b6d4'; this.style.color='#38bdf8';
                         root.querySelectorAll('.{uid}_pane').forEach(function(p){{ p.style.display='none'; }});
                         var p = document.getElementById('{uid}_pane_options'); if(p) p.style.display='block';
                         var w = document.querySelector('.{uid}_widget_pane_container'); if(w) w.style.display='none';
                     ">⚙️ Configs</button>
                 </div>
                 
-                <span style="background: #1e293b; color: #38bdf8; font-size: 11px; font-family: monospace; font-weight: 700; padding: 4px 8px; border-radius: 6px; border: 1px solid #334155;">
+                <span style="background: #1e293b; color: #38bdf8; font-size: 10px; font-family: monospace; font-weight: 700; padding: 2px 6px; border-radius: 5px; border: 1px solid #334155;">
                     {TOOLKIT_VERSION}
                 </span>
             </div>
         </div>
 
         <div id="{uid}_pane_inspector" class="{uid}_pane" style="display: none;">
-            <div style="background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px;">
-                <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px;">
-                    <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px;">
+                <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
                         <span style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">DataFrame:</span>
-                        <select id="{uid}_inspectorDfSelector" style="background: #0f172a; color: #38bdf8; font-family: monospace; font-size: 13px; border: 1px solid #475569; border-radius: 6px; padding: 5px 10px; outline: none; cursor: pointer;"></select>
-                        <span id="{uid}_inspectorShapeBadge" style="font-size: 12px; font-family: monospace; background: #0f172a; color: #38bdf8; padding: 4px 10px; border-radius: 6px; font-weight: 600; border: 1px solid #334155;">0 rows</span>
+                        <select id="{uid}_inspectorDfSelector" style="background: #0f172a; color: #38bdf8; font-family: monospace; font-size: 12px; border: 1px solid #475569; border-radius: 6px; padding: 4px 8px; outline: none; cursor: pointer;"></select>
+                        <span id="{uid}_inspectorShapeBadge" style="font-size: 11px; font-family: monospace; background: #0f172a; color: #38bdf8; padding: 3px 8px; border-radius: 6px; font-weight: 600; border: 1px solid #334155;">0 rows</span>
                     </div>
                     <div>
                         <input type="text" id="{uid}_inspectorSearchInput" placeholder="Filter column or type..." 
-                               style="background: #0f172a; color: white; font-size: 12px; border: 1px solid #475569; border-radius: 6px; padding: 6px 12px; outline: none; width: 220px;">
+                               style="background: #0f172a; color: white; font-size: 11px; border: 1px solid #475569; border-radius: 6px; padding: 4px 8px; outline: none; width: 190px;">
                     </div>
                 </div>
 
-                <div style="max-height: 440px; overflow-y: auto; border: 1px solid #334155; border-radius: 8px; background-color: #0f172a;">
+                <div style="max-height: 520px; overflow-y: auto; border: 1px solid #334155; border-radius: 6px; background-color: #0f172a;">
                     <table class="{uid}_res_table" style="width: 100%;">
                         <thead>
                             <tr>
-                                <th style="padding: 10px; width: 25%;">Column Name</th>
-                                <th style="padding: 10px; width: 15%;">Data Type</th>
-                                <th style="padding: 10px; width: 20%;">Sample Non-Null #1</th>
-                                <th style="padding: 10px; width: 20%;">Sample Non-Null #2</th>
-                                <th style="padding: 10px; width: 20%;">Sample Non-Null #3</th>
+                                <th style="padding: 6px 10px; width: 25%;">Column Name</th>
+                                <th style="padding: 6px 10px; width: 15%;">Data Type</th>
+                                <th style="padding: 6px 10px; width: 20%;">Sample Non-Null #1</th>
+                                <th style="padding: 6px 10px; width: 20%;">Sample Non-Null #2</th>
+                                <th style="padding: 6px 10px; width: 20%;">Sample Non-Null #3</th>
                             </tr>
                         </thead>
                         <tbody id="{uid}_inspectorTableBody"></tbody>
@@ -939,15 +935,15 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         </div>
 
         <div id="{uid}_pane_filter" class="{uid}_pane" style="display: none;">
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px;">
-                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px;">
+                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                         <span style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">1. Multi-Condition Logic (&, |, ~)</span>
-                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 6px; padding: 5px 7px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center;">
-                            <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 5px; padding: 3px 6px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center;">
+                            <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                         </button>
                     </div>
-                    <pre style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; font-size: 12px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code># Parentheses () are mandatory around each clause
+                    <pre style="background: #0f172a; color: #e2e8f0; padding: 8px; border-radius: 6px; font-size: 11px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code># Parentheses () are mandatory around each clause
 df.filter(
     (pl.col("age") >= 25) &
     (pl.col("status") == "Active") &
@@ -955,14 +951,14 @@ df.filter(
 )</code></pre>
                 </div>
 
-                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                         <span style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">2. Dynamic Lists & String Regex</span>
-                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 6px; padding: 5px 7px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center;">
-                            <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 5px; padding: 3px 6px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center;">
+                            <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                         </button>
                     </div>
-                    <pre style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; font-size: 12px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code>target_regions = ["North", "APAC", "West"]
+                    <pre style="background: #0f172a; color: #e2e8f0; padding: 8px; border-radius: 6px; font-size: 11px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code>target_regions = ["North", "APAC", "West"]
 df.filter(
     pl.col("region").is_in(target_regions) &
     pl.col("email").str.contains(r"@gmail\\.com$") &
@@ -973,15 +969,15 @@ df.filter(
         </div>
 
         <div id="{uid}_pane_freq" class="{uid}_pane" style="display: none;">
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px;">
-                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px;">
+                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                         <span style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">1D Freq Table (Count + %)</span>
-                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 6px; padding: 5px 7px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center;">
-                            <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 5px; padding: 3px 6px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center;">
+                            <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                         </button>
                     </div>
-                    <pre style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; font-size: 12px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code># 1D proc freq alternative
+                    <pre style="background: #0f172a; color: #e2e8f0; padding: 8px; border-radius: 6px; font-size: 11px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code># 1D proc freq alternative
 (
     df.group_by("category")
     .agg(
@@ -992,14 +988,14 @@ df.filter(
 )</code></pre>
                 </div>
 
-                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                         <span style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">2D Crosstab Matrix (Pivot)</span>
-                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 6px; padding: 5px 7px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center;">
-                            <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 5px; padding: 3px 6px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center;">
+                            <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                         </button>
                     </div>
-                    <pre style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; font-size: 12px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code># 2D cross-tab (Row: region, Col: status)
+                    <pre style="background: #0f172a; color: #e2e8f0; padding: 8px; border-radius: 6px; font-size: 11px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code># 2D cross-tab (Row: region, Col: status)
 (
     df.pivot(
         on="status",
@@ -1013,15 +1009,15 @@ df.filter(
         </div>
 
         <div id="{uid}_pane_manip" class="{uid}_pane" style="display: none;">
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px;">
-                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px;">
+                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                         <span style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">1. Multiple Columns Rename</span>
-                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 6px; padding: 5px 7px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center;">
-                            <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 5px; padding: 3px 6px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center;">
+                            <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                         </button>
                     </div>
-                    <pre style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; font-size: 12px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code># A. Multiple rename using Dictionary Mapping
+                    <pre style="background: #0f172a; color: #e2e8f0; padding: 8px; border-radius: 6px; font-size: 11px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code># A. Multiple rename using Dictionary Mapping
 df_renamed = df.rename({{
     "old_col_1": "new_col_1",
     "old_col_2": "new_col_2",
@@ -1035,42 +1031,42 @@ df_clean = df.rename(lambda c: c.lower().replace(" ", "_"))
 df_prefixed = df.select(pl.all().name.prefix("raw_"))</code></pre>
                 </div>
 
-                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                         <span style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">2. Split Variable into Columns</span>
-                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 6px; padding: 5px 7px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center;">
-                            <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 5px; padding: 3px 6px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center;">
+                            <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                         </button>
                     </div>
-                    <pre style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; font-size: 12px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code># Split exact string into struct fields
+                    <pre style="background: #0f172a; color: #e2e8f0; padding: 8px; border-radius: 6px; font-size: 11px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code># Split exact string into struct fields
 df.with_columns(
     first_name=pl.col("name").str.split_exact(" ", 1).struct.field("field_0"),
     last_name=pl.col("name").str.split_exact(" ", 1).struct.field("field_1")
 )</code></pre>
                 </div>
 
-                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                         <span style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">3. Conditional Logic (when / then)</span>
-                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 6px; padding: 5px 7px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center;">
-                            <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 5px; padding: 3px 6px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center;">
+                            <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                         </button>
                     </div>
-                    <pre style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; font-size: 12px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code>df.with_columns(
+                    <pre style="background: #0f172a; color: #e2e8f0; padding: 8px; border-radius: 6px; font-size: 11px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code>df.with_columns(
     tier=pl.when(pl.col("spend") > 1000).then(pl.lit("Gold"))
            .when(pl.col("spend") > 500).then(pl.lit("Silver"))
            .otherwise(pl.lit("Standard"))
 )</code></pre>
                 </div>
 
-                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                         <span style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">4. Regex Extraction & Casting</span>
-                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 6px; padding: 5px 7px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center;">
-                            <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 5px; padding: 3px 6px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center;">
+                            <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                         </button>
                     </div>
-                    <pre style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; font-size: 12px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code>df.with_columns(
+                    <pre style="background: #0f172a; color: #e2e8f0; padding: 8px; border-radius: 6px; font-size: 11px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code>df.with_columns(
     domain=pl.col("email").str.extract(r"@([\\w\\.]+)", 1),
     amount_num=pl.col("amount_str").cast(pl.Float64)
 )</code></pre>
@@ -1079,14 +1075,14 @@ df.with_columns(
         </div>
 
         <div id="{uid}_pane_options" class="{uid}_pane" style="display: none;">
-            <div style="background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                     <span style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">Polars Global Display Options</span>
-                    <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 6px; padding: 5px 7px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center;">
-                        <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                    <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 5px; padding: 3px 6px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center;">
+                        <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                     </button>
                 </div>
-                <pre style="background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 6px; font-size: 12px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code># Set Jupyter notebook formatting & rows/cols
+                <pre style="background: #0f172a; color: #e2e8f0; padding: 8px; border-radius: 6px; font-size: 11px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code># Set Jupyter notebook formatting & rows/cols
 pl.Config.set_tbl_rows(25)             # Max rows displayed
 pl.Config.set_tbl_cols(20)             # Max cols displayed
 pl.Config.set_tbl_width_chars(140)     # Width of table
@@ -1127,7 +1123,7 @@ with pl.Config(tbl_rows=100, tbl_cols=50, fmt_str_lengths=100):
                 
                 var originalSvg = btn.innerHTML;
                 navigator.clipboard.writeText(codeEl.innerText).then(function() {{
-                    btn.innerHTML = '<svg style="width: 14px; height: 14px; color: #34d399;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
+                    btn.innerHTML = '<svg style="width: 13px; height: 13px; color: #34d399;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
                     btn.style.borderColor = "#34d399";
                     setTimeout(function() {{
                         btn.innerHTML = originalSvg;
@@ -1143,7 +1139,7 @@ with pl.Config(tbl_rows=100, tbl_cols=50, fmt_str_lengths=100):
         if (dfNames.length === 0) {{
             inspectorSelector.innerHTML = '<option value="">No DataFrames</option>';
             inspectorShapeBadge.innerText = '0 DataFrames';
-            inspectorTbody.innerHTML = '<tr><td colspan="5" style="padding: 16px; text-align: center; color: #64748b;">No active Polars DataFrames detected.</td></tr>';
+            inspectorTbody.innerHTML = '<tr><td colspan="5" style="padding: 12px; text-align: center; color: #64748b;">No active Polars DataFrames detected.</td></tr>';
             return;
         }}
 
@@ -1166,7 +1162,7 @@ with pl.Config(tbl_rows=100, tbl_cols=50, fmt_str_lengths=100):
                 var rowClass = (rIdx % 2 === 0) ? "row-even" : "row-odd";
                 rowsHtml += '<tr class="' + rowClass + '">' +
                     '<td style="font-weight: bold; color: #38bdf8 !important;">' + c.col + '</td>' +
-                    '<td><span style="background: #334155; color: #67e8f9 !important; padding: 2px 6px; border-radius: 4px; font-size: 11px;">' + c.dtype + '</span></td>' +
+                    '<td><span style="background: #334155; color: #67e8f9 !important; padding: 2px 6px; border-radius: 4px; font-size: 10px;">' + c.dtype + '</span></td>' +
                     '<td>' + formatSample(c.sample1) + '</td>' +
                     '<td>' + formatSample(c.sample2) + '</td>' +
                     '<td>' + formatSample(c.sample3) + '</td>' +
@@ -1199,11 +1195,11 @@ with pl.Config(tbl_rows=100, tbl_cols=50, fmt_str_lengths=100):
     toolkit_box = widgets.VBox([
         widgets.HTML(toolkit_html),
         widget_wrapper
-    ], layout=widgets.Layout(display='none', margin='8px 0 0 0', background_color='#1e293b'))
+    ], layout=widgets.Layout(display='none', margin='4px 0 0 0', background_color='#1e293b'))
 
     btn_toggle = widgets.Button(
         description=f"🛠️ Rajapriyan Coding Toolkit  ({first_df_name} · {df_shape_info})",
-        layout=widgets.Layout(width='auto', height='34px')
+        layout=widgets.Layout(width='auto', height='30px')
     )
     btn_toggle.add_class(f"{uid}_launcher_btn")
 
