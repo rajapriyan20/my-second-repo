@@ -6,14 +6,14 @@ import ipywidgets as widgets
 import polars as pl
 from IPython.display import HTML, display
 
-TOOLKIT_VERSION = "v3.2"
+TOOLKIT_VERSION = "v3.3"
 
 def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filename: str = "polars_jupyter_helper.html"):
     """
-    Rajapriyan Coding Toolkit (v3.2):
+    Rajapriyan Coding Toolkit (v3.3):
     - 100% Solid Dark Theme: Completely eliminates white gaps & canvas bleed
     - Integrated Header Bar: DataFrame selection & shape badge in top header line
-    - Maximized Vertical Screen Space with 550px+ table viewport
+    - Maximized Vertical Screen Space with 560px+ table viewport
     - Side-by-Side Column Selection & Parallel Filter Panels
     - Full-Dataset Polars Query Engine (handles millions of rows in ms)
     - Mouse-Draggable Column Resizing + 3-State Sorting (Asc/Desc/Orig)
@@ -68,15 +68,15 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
 
     metadata_json = json.dumps(dfs_metadata)
 
-    # 2. Master CSS Styles (Forces 100% Solid Dark Theme & Eliminates All White Gaps)
+    # 2. Master CSS Styles (Total Dark Theme Override with Zero White Bleed)
     css_styles = f"""
     <style>
         /* Force Root Dark Container & Kill Jupyter Output Area Light Theme Bleed */
-        #{uid}_master_container,
-        #{uid}_master_container * {{
+        .raj_root_{uid},
+        .raj_root_{uid} * {{
             box-sizing: border-box !important;
         }}
-        #{uid}_master_container {{
+        .raj_root_{uid} {{
             background-color: #0f172a !important;
             background: #0f172a !important;
             color: #f8fafc !important;
@@ -90,15 +90,15 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         }}
 
         /* Wipe out all Jupyter light-theme default widget margins & white backgrounds */
-        #{uid}_master_container .jupyter-widgets,
-        #{uid}_master_container .widget-box,
-        #{uid}_master_container .widget-vbox,
-        #{uid}_master_container .widget-hbox,
-        #{uid}_master_container .widget-inline-hbox,
-        #{uid}_master_container .widget-output,
-        #{uid}_master_container .output_subarea,
-        #{uid}_master_container .output_wrapper,
-        #{uid}_master_container .cell-output-ipywidget-background {{
+        .raj_root_{uid} .jupyter-widgets,
+        .raj_root_{uid} .widget-box,
+        .raj_root_{uid} .widget-vbox,
+        .raj_root_{uid} .widget-hbox,
+        .raj_root_{uid} .widget-inline-hbox,
+        .raj_root_{uid} .widget-output,
+        .raj_root_{uid} .output_subarea,
+        .raj_root_{uid} .output_wrapper,
+        .raj_root_{uid} .cell-output-ipywidget-background {{
             background: transparent !important;
             background-color: transparent !important;
             border: none !important;
@@ -108,8 +108,8 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             color: #f8fafc !important;
         }}
 
-        /* Dark Well Cards */
-        .{uid}_card_well {{
+        /* Dark Card Panels & Wells */
+        .raj_root_{uid} .panel_card {{
             background-color: #1e293b !important;
             background: #1e293b !important;
             border: 1px solid #334155 !important;
@@ -117,16 +117,16 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             padding: 6px 8px !important;
         }}
 
-        #{uid}_master_container .widget-label {{
+        .raj_root_{uid} .widget-label {{
             color: #94a3b8 !important;
             font-size: 11px !important;
             font-weight: 700 !important;
             text-transform: uppercase !important;
         }}
 
-        /* Modern Rounded Inputs */
-        #{uid}_master_container input[type="text"],
-        #{uid}_master_container select {{
+        /* Modern Rounded Inputs & Search Pills */
+        .raj_root_{uid} input[type="text"],
+        .raj_root_{uid} select {{
             background-color: #0f172a !important;
             color: #38bdf8 !important;
             border: 1px solid #475569 !important;
@@ -139,14 +139,14 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
             height: 26px !important;
         }}
-        #{uid}_master_container input[type="text"]:focus,
-        #{uid}_master_container select:focus {{
+        .raj_root_{uid} input[type="text"]:focus,
+        .raj_root_{uid} select:focus {{
             border-color: #06b6d4 !important;
             box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.25) !important;
         }}
 
         /* Tactile Rounded Buttons */
-        #{uid}_master_container .widget-button button {{
+        .raj_root_{uid} .widget-button button {{
             border-radius: 6px !important;
             font-size: 11px !important;
             font-weight: 600 !important;
@@ -158,41 +158,41 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             line-height: 16px !important;
             border: 1px solid transparent !important;
         }}
-        #{uid}_master_container .widget-button button:hover {{
+        .raj_root_{uid} .widget-button button:hover {{
             filter: brightness(1.15) !important;
             transform: translateY(-1px) !important;
             box-shadow: 0 3px 6px rgba(0,0,0,0.4) !important;
         }}
-        #{uid}_master_container .widget-button button:active {{
+        .raj_root_{uid} .widget-button button:active {{
             transform: translateY(0px) !important;
             filter: brightness(0.95) !important;
         }}
 
-        /* Button Colors */
-        .{uid}_btn_secondary button {{
+        /* Button Gradients */
+        .raj_btn_secondary button {{
             background: linear-gradient(180deg, #334155, #1e293b) !important;
             color: #f1f5f9 !important;
             border: 1px solid #475569 !important;
         }}
-        .{uid}_btn_apply button {{
+        .raj_btn_apply button {{
             background: linear-gradient(135deg, #0284c7, #0369a1) !important;
             color: #ffffff !important;
             border: 1px solid #38bdf8 !important;
             box-shadow: 0 2px 6px rgba(2, 132, 199, 0.35) !important;
         }}
-        .{uid}_btn_add_filter button {{
+        .raj_btn_add_filter button {{
             background: linear-gradient(135deg, #6366f1, #4f46e5) !important;
             color: #ffffff !important;
             border: 1px solid #818cf8 !important;
             box-shadow: 0 2px 6px rgba(99, 102, 241, 0.35) !important;
         }}
-        .{uid}_btn_run_filter button {{
+        .raj_btn_run_filter button {{
             background: linear-gradient(135deg, #059669, #047857) !important;
             color: #ffffff !important;
             border: 1px solid #34d399 !important;
             box-shadow: 0 2px 6px rgba(5, 150, 105, 0.35) !important;
         }}
-        .{uid}_btn_danger button {{
+        .raj_btn_danger button {{
             background: linear-gradient(135deg, #e11d48, #be123c) !important;
             color: #ffffff !important;
             border: 1px solid #fb7185 !important;
@@ -380,25 +380,25 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
     col_search_input = widgets.Text(placeholder="🔍 Search...", layout=widgets.Layout(width='110px'))
     
     btn_select_all_cols = widgets.Button(description="All", layout=widgets.Layout(width='45px'))
-    btn_select_all_cols.add_class(f"{uid}_btn_secondary")
+    btn_select_all_cols.add_class("raj_btn_secondary")
     
     btn_clear_all_cols = widgets.Button(description="Clear", layout=widgets.Layout(width='50px'))
-    btn_clear_all_cols.add_class(f"{uid}_btn_secondary")
+    btn_clear_all_cols.add_class("raj_btn_secondary")
     
     btn_apply_cols = widgets.Button(description="✓ Apply", layout=widgets.Layout(width='75px'))
-    btn_apply_cols.add_class(f"{uid}_btn_apply")
+    btn_apply_cols.add_class("raj_btn_apply")
 
     col_checklist_box = widgets.HBox([], layout=widgets.Layout(flex_flow='row wrap', max_height='68px', overflow='auto', padding='2px', background_color='#0f172a', margin='0'))
 
     # Filter Controls
     btn_add_filter = widgets.Button(description="+ Filter", layout=widgets.Layout(width='80px'))
-    btn_add_filter.add_class(f"{uid}_btn_add_filter")
+    btn_add_filter.add_class("raj_btn_add_filter")
 
     btn_run_filter = widgets.Button(description="⚡ Run", layout=widgets.Layout(width='75px'))
-    btn_run_filter.add_class(f"{uid}_btn_run_filter")
+    btn_run_filter.add_class("raj_btn_run_filter")
 
     btn_reset_filters = widgets.Button(description="↺ Reset", layout=widgets.Layout(width='70px'))
-    btn_reset_filters.add_class(f"{uid}_btn_secondary")
+    btn_reset_filters.add_class("raj_btn_secondary")
 
     status_code_box = widgets.HTML(value="")
 
@@ -466,7 +466,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         )
         val_txt = widgets.Text(placeholder="Value...", layout=widgets.Layout(width='130px'))
         btn_del = widgets.Button(description="✕", layout=widgets.Layout(width='28px'))
-        btn_del.add_class(f"{uid}_btn_danger")
+        btn_del.add_class("raj_btn_danger")
 
         row_box = widgets.HBox([col_dd, op_dd, val_txt, btn_del], layout=widgets.Layout(margin='1px 0', align_items='center'))
         
@@ -530,7 +530,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
                             code_snippets.append(f'pl.col("{col}") == {num}')
                         except Exception:
                             filter_exprs.append(pl.col(col).cast(pl.Utf8) == val)
-                            code_snippets.append(f'pl.col("{col}") == "{val}"')
+                            code_snippets.append(f'pl.col("{col}").cast(pl.Utf8) == "{val}"')
                     else:
                         filter_exprs.append(pl.col(col).cast(pl.Utf8) == val)
                         code_snippets.append(f'pl.col("{col}") == "{val}"')
@@ -610,7 +610,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             tbody_rows = "<tr><td colspan='100' style='padding:18px; text-align:center; color:#94a3b8;'>No rows matched the filter criteria across the DataFrame.</td></tr>"
 
         table_html = f"""
-        <div style="max-height:550px; overflow:auto; border:1px solid #334155; border-radius:6px; background-color:#0f172a;">
+        <div style="max-height:560px; overflow:auto; border:1px solid #334155; border-radius:6px; background-color:#0f172a;">
             <table id="{table_id}" class="{uid}_res_table">
                 <thead><tr>{th_cells}</tr></thead>
                 <tbody>{tbody_rows}</tbody>
@@ -790,7 +790,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         applied_columns.update(pending_cols)
         update_col_checkboxes()
 
-    # --- SIDE-BY-SIDE CONTROLS LAYOUT ---
+    # --- SIDE-BY-SIDE CONTROLS LAYOUT (Solid Dark Wells) ---
     col_section_box = widgets.VBox([
         widgets.HBox([
             widgets.HTML("<span style='font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;'>Columns:</span>"),
@@ -800,8 +800,8 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             btn_apply_cols
         ], layout=widgets.Layout(align_items='center', gap='3px', margin='0 0 3px 0', width='100%')),
         col_checklist_box
-    ], layout=widgets.Layout(flex='1 1 50%', min_width='320px', padding='6px 8px', background_color='#1e293b', border='1px solid #334155', border_radius='6px', margin='0'))
-    col_section_box.add_class(f"{uid}_card_well")
+    ], layout=widgets.Layout(flex='1 1 50%', min_width='320px', padding='6px 8px', margin='0'))
+    col_section_box.add_class("panel_card")
 
     filter_section_box = widgets.VBox([
         widgets.HBox([
@@ -811,16 +811,24 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             btn_reset_filters
         ], layout=widgets.Layout(align_items='center', gap='3px', margin='0 0 3px 0', width='100%')),
         filter_rows_container
-    ], layout=widgets.Layout(flex='1 1 50%', min_width='320px', padding='6px 8px', background_color='#1e293b', border='1px solid #334155', border_radius='6px', margin='0'))
-    filter_section_box.add_class(f"{uid}_card_well")
+    ], layout=widgets.Layout(flex='1 1 50%', min_width='320px', padding='6px 8px', margin='0'))
+    filter_section_box.add_class("panel_card")
 
     side_by_side_controls = widgets.HBox([
         col_section_box,
         filter_section_box
     ], layout=widgets.Layout(width='100%', gap='6px', margin='0 0 6px 0', align_items='stretch'))
 
-    # Quick preview box (contains only the interactive controls, code box, and table)
+    # Integrated DF Header Bar
+    df_embedded_bar = widgets.HBox([
+        widgets.HTML("<span style='font-size:11px; font-weight:700; color:#cbd5e1; margin-right:4px;'>📊 ACTIVE DATAFRAME:</span>"),
+        df_dropdown,
+        shape_label
+    ], layout=widgets.Layout(align_items='center', margin='0 0 6px 0', padding='4px 8px', border_bottom='1px solid #334155', width='100%'))
+    df_embedded_bar.add_class("panel_card")
+
     quick_preview_controls_box = widgets.VBox([
+        df_embedded_bar,
         side_by_side_controls,
         status_code_box,
         preview_output
@@ -841,58 +849,58 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         <div style="display: flex; align-items: center; gap: 8px;">
             <div style="display: flex; gap: 2px; overflow-x: auto; font-size: 12px;">
                 <button type="button" id="{uid}_btn_preview" class="{uid}_tab_btn tab-active" onclick="
-                    var root = document.getElementById('{uid}_master_container');
+                    var root = document.querySelector('.raj_root_{uid}');
                     root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='2px solid transparent'; b.style.color='#94a3b8'; }});
                     this.classList.add('tab-active'); this.style.borderBottom='2px solid #06b6d4'; this.style.color='#38bdf8';
                     root.querySelectorAll('.{uid}_pane').forEach(function(p){{ p.style.display='none'; }});
-                    var w = document.getElementById('{uid}_preview_wrapper_div'); if(w) w.style.display='block';
+                    var w = document.getElementById('{uid}_preview_host'); if(w) w.style.display='block';
                 ">👁️ Quick Preview</button>
                 
                 <button type="button" id="{uid}_btn_inspector" class="{uid}_tab_btn" onclick="
-                    var root = document.getElementById('{uid}_master_container');
+                    var root = document.querySelector('.raj_root_{uid}');
                     root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='2px solid transparent'; b.style.color='#94a3b8'; }});
                     this.classList.add('tab-active'); this.style.borderBottom='2px solid #06b6d4'; this.style.color='#38bdf8';
                     root.querySelectorAll('.{uid}_pane').forEach(function(p){{ p.style.display='none'; }});
                     var p = document.getElementById('{uid}_pane_inspector'); if(p) p.style.display='block';
-                    var w = document.getElementById('{uid}_preview_wrapper_div'); if(w) w.style.display='none';
+                    var w = document.getElementById('{uid}_preview_host'); if(w) w.style.display='none';
                     var inspSel = document.getElementById('{uid}_inspectorDfSelector');
                     if(inspSel && inspSel.onchange) inspSel.onchange();
                 ">🔬 Metadata Inspector</button>
                 
                 <button type="button" id="{uid}_btn_filter" class="{uid}_tab_btn" onclick="
-                    var root = document.getElementById('{uid}_master_container');
+                    var root = document.querySelector('.raj_root_{uid}');
                     root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='2px solid transparent'; b.style.color='#94a3b8'; }});
                     this.classList.add('tab-active'); this.style.borderBottom='2px solid #06b6d4'; this.style.color='#38bdf8';
                     root.querySelectorAll('.{uid}_pane').forEach(function(p){{ p.style.display='none'; }});
                     var p = document.getElementById('{uid}_pane_filter'); if(p) p.style.display='block';
-                    var w = document.getElementById('{uid}_preview_wrapper_div'); if(w) w.style.display='none';
+                    var w = document.getElementById('{uid}_preview_host'); if(w) w.style.display='none';
                 ">🔍 Multi-Filter</button>
                 
                 <button type="button" id="{uid}_btn_freq" class="{uid}_tab_btn" onclick="
-                    var root = document.getElementById('{uid}_master_container');
+                    var root = document.querySelector('.raj_root_{uid}');
                     root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='2px solid transparent'; b.style.color='#94a3b8'; }});
                     this.classList.add('tab-active'); this.style.borderBottom='2px solid #06b6d4'; this.style.color='#38bdf8';
                     root.querySelectorAll('.{uid}_pane').forEach(function(p){{ p.style.display='none'; }});
                     var p = document.getElementById('{uid}_pane_freq'); if(p) p.style.display='block';
-                    var w = document.getElementById('{uid}_preview_wrapper_div'); if(w) w.style.display='none';
+                    var w = document.getElementById('{uid}_preview_host'); if(w) w.style.display='none';
                 ">📊 Proc Freq</button>
                 
                 <button type="button" id="{uid}_btn_manip" class="{uid}_tab_btn" onclick="
-                    var root = document.getElementById('{uid}_master_container');
+                    var root = document.querySelector('.raj_root_{uid}');
                     root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='2px solid transparent'; b.style.color='#94a3b8'; }});
                     this.classList.add('tab-active'); this.style.borderBottom='2px solid #06b6d4'; this.style.color='#38bdf8';
                     root.querySelectorAll('.{uid}_pane').forEach(function(p){{ p.style.display='none'; }});
                     var p = document.getElementById('{uid}_pane_manip'); if(p) p.style.display='block';
-                    var w = document.getElementById('{uid}_preview_wrapper_div'); if(w) w.style.display='none';
+                    var w = document.getElementById('{uid}_preview_host'); if(w) w.style.display='none';
                 ">🛠️ Column Manip & Rename</button>
                 
                 <button type="button" id="{uid}_btn_options" class="{uid}_tab_btn" onclick="
-                    var root = document.getElementById('{uid}_master_container');
+                    var root = document.querySelector('.raj_root_{uid}');
                     root.querySelectorAll('.{uid}_tab_btn').forEach(function(b){{ b.classList.remove('tab-active'); b.style.borderBottom='2px solid transparent'; b.style.color='#94a3b8'; }});
                     this.classList.add('tab-active'); this.style.borderBottom='2px solid #06b6d4'; this.style.color='#38bdf8';
                     root.querySelectorAll('.{uid}_pane').forEach(function(p){{ p.style.display='none'; }});
                     var p = document.getElementById('{uid}_pane_options'); if(p) p.style.display='block';
-                    var w = document.getElementById('{uid}_preview_wrapper_div'); if(w) w.style.display='none';
+                    var w = document.getElementById('{uid}_preview_host'); if(w) w.style.display='none';
                 ">⚙️ Configs</button>
             </div>
             
@@ -1097,7 +1105,7 @@ with pl.Config(tbl_rows=100, tbl_cols=50, fmt_str_lengths=100):
     <script>
     (function() {{
         var meta = {metadata_json};
-        var root = document.getElementById("{uid}_master_container");
+        var root = document.querySelector('.raj_root_{uid}');
         var inspectorSelector = document.getElementById("{uid}_inspectorDfSelector");
         var inspectorShapeBadge = document.getElementById("{uid}_inspectorShapeBadge");
         var inspectorTbody = document.getElementById("{uid}_inspectorTableBody");
@@ -1184,37 +1192,24 @@ with pl.Config(tbl_rows=100, tbl_cols=50, fmt_str_lengths=100):
     </script>
     """
 
-    # 5. Build Unified Single-Container Layout
+    # 5. Assemble into a Single Unified Dark Root Container
     df_count = len(dfs_dict)
     first_df_name = list(dfs_dict.keys())[0] if dfs_dict else ""
     df_shape_info = f"{dfs_metadata[first_df_name]['shape']}" if first_df_name else "0 rows"
 
-    # Embedded DF Selector toolbar row (sits flush under the header line)
-    df_integrated_bar = widgets.HBox([
-        widgets.HTML("<span style='font-size:11px; font-weight:700; color:#cbd5e1; margin-right:4px;'>📊 ACTIVE DATAFRAME:</span>"),
-        df_dropdown,
-        shape_label
-    ], layout=widgets.Layout(align_items='center', margin='0 0 6px 0', padding='4px 6px', border_bottom='1px solid #334155', width='100%', background_color='#1e293b'))
+    # HTML host div for the Quick Preview section
+    preview_host_div = widgets.HTML(f"<div id='{uid}_preview_host' style='display:block; width:100%;'></div>")
 
-    # Quick Preview Wrapper that toggles with tabs
-    preview_wrapper_box = widgets.VBox([
-        df_integrated_bar,
-        quick_preview_controls_box
-    ], layout=widgets.Layout(width='100%', margin='0', padding='0'))
-
-    # HTML wrapper div for JS tab toggling
-    preview_wrapper_html_host = widgets.HTML(f"<div id='{uid}_preview_wrapper_div' style='display:block; width:100%;'></div>")
-
-    # Complete Master Container
+    # The Master Container widget (Holds Header HTML, Cheat Sheets, & Quick Preview widgets together)
     master_box = widgets.VBox([
         widgets.HTML(toolkit_html),
-        preview_wrapper_html_host,
-        preview_wrapper_box
+        preview_host_div,
+        quick_preview_controls_box
     ], layout=widgets.Layout(width='100%', margin='0', padding='0'))
-    master_box.add_class(f"{uid}_master_class")
+    master_box.add_class(f"raj_root_{uid}")
 
-    # Outer host wrapper div with explicit ID to ensure zero white gaps
-    toolkit_container = widgets.VBox([
+    # Collapsible Toolkit Box
+    toolkit_collapsible = widgets.VBox([
         master_box
     ], layout=widgets.Layout(display='none', width='100%', margin='4px 0 0 0'))
 
@@ -1226,20 +1221,17 @@ with pl.Config(tbl_rows=100, tbl_cols=50, fmt_str_lengths=100):
     btn_toggle.add_class(f"{uid}_launcher_btn")
 
     def on_toggle_clicked(b):
-        if toolkit_container.layout.display == 'none':
-            toolkit_container.layout.display = 'block'
+        if toolkit_collapsible.layout.display == 'none':
+            toolkit_collapsible.layout.display = 'block'
             btn_toggle.description = f"▲ Hide Toolkit ({first_df_name})"
         else:
-            toolkit_container.layout.display = 'none'
+            toolkit_collapsible.layout.display = 'none'
             btn_toggle.description = f"🛠️ Rajapriyan Coding Toolkit  ({first_df_name} · {df_shape_info})"
 
     btn_toggle.on_click(on_toggle_clicked)
 
-    # Wrap the entire component in a dark host div with UID
-    display(HTML(f"<div id='{uid}_master_container'></div>"))
-    
-    # Render launcher & container
-    display(widgets.VBox([btn_toggle, toolkit_container], layout=widgets.Layout(width='100%')))
+    # Render Launcher Button & Unified Dark Widget Tree
+    display(widgets.VBox([btn_toggle, toolkit_collapsible], layout=widgets.Layout(width='100%')))
 
     if save_html:
         with open(filename, "w", encoding="utf-8") as f:
