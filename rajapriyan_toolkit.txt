@@ -6,16 +6,17 @@ import ipywidgets as widgets
 import polars as pl
 from IPython.display import HTML, display
 
-TOOLKIT_VERSION = "v2.6"
+TOOLKIT_VERSION = "v2.7"
 
 def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filename: str = "polars_jupyter_helper.html"):
     """
-    Rajapriyan Coding Toolkit (v2.6):
+    Rajapriyan Coding Toolkit (v2.7):
+    - Side-by-Side Column Selection & Parallel Filter Builders
+    - Clean 1px Divider Lines Between Sections (Zero white gap bleeding)
     - Full-Dataset Polars Query Engine (handles millions of rows in ms)
-    - 100% Slate/Blue Deep Theme (Zero white background bleeding)
-    - Working Excel/SAS Viya Mouse-Draggable Column Resizing + 3-State Sorting
-    - Responsive Card-Like Column Selection Pills
-    - Sleek Pill Launcher Button
+    - 100% Dark Blue & Slate Theme across all controls & headers
+    - Excel/SAS Viya Mouse-Draggable Column Resizing + 3-State Sorting
+    - Sleek Compact Launcher Pill Button
     """
     # 1. Discover Polars DataFrames in active Jupyter interactive session
     try:
@@ -66,7 +67,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
 
     metadata_json = json.dumps(dfs_metadata)
 
-    # 2. Master CSS Styles (Anti-Invisibility, Pure Deep Navy/Slate Theme)
+    # 2. Master CSS Styles (Forces Dark Blue Everywhere & Clean Dividers)
     css_styles = f"""
     <style>
         /* Force Root Dark Palette across all Jupyter / ipywidgets elements */
@@ -163,7 +164,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             border: 1px solid #334155 !important;
             border-radius: 6px !important;
             padding: 1px 6px !important;
-            margin: 2px 4px !important;
+            margin: 2px 3px !important;
             height: 24px !important;
             display: inline-flex !important;
             align-items: center !important;
@@ -194,7 +195,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             font-weight: 600 !important;
         }}
 
-        /* Fixed-Width Resizable Table Geometry */
+        /* Resizable Table Layout with Fixed Widths & Ellipsis */
         table.{uid}_res_table {{
             border-collapse: separate !important;
             border-spacing: 0 !important;
@@ -311,7 +312,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
 
     # 3. Interactive Quick Preview Engine (Python Polars Backend)
     preview_output = widgets.Output()
-    filter_rows_container = widgets.VBox([])
+    filter_rows_container = widgets.VBox([], layout=widgets.Layout(max_height='85px', overflow='auto', padding='2px'))
     active_filters = []
     
     current_df_name = list(dfs_dict.keys())[0] if dfs_dict else None
@@ -331,27 +332,29 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         value=f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:5px 10px; border-radius:6px; font-size:12px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape'] if current_df_name else '0 rows'}</span>"
     )
 
-    col_search_input = widgets.Text(placeholder="🔍 Search columns...", layout=widgets.Layout(width='190px'))
+    # Column Controls (Side-by-Side Sizing)
+    col_search_input = widgets.Text(placeholder="🔍 Search...", layout=widgets.Layout(width='125px'))
     
-    btn_select_all_cols = widgets.Button(description="Check All", layout=widgets.Layout(width='80px'))
+    btn_select_all_cols = widgets.Button(description="All", layout=widgets.Layout(width='55px'))
     btn_select_all_cols.add_class(f"{uid}_btn_secondary")
     
-    btn_clear_all_cols = widgets.Button(description="Clear All", layout=widgets.Layout(width='80px'))
+    btn_clear_all_cols = widgets.Button(description="Clear", layout=widgets.Layout(width='60px'))
     btn_clear_all_cols.add_class(f"{uid}_btn_secondary")
     
-    btn_apply_cols = widgets.Button(description="✓ Apply Columns", layout=widgets.Layout(width='130px'))
+    btn_apply_cols = widgets.Button(description="✓ Apply", layout=widgets.Layout(width='85px'))
     btn_apply_cols.add_class(f"{uid}_btn_primary")
 
     # Column checklist box
-    col_checklist_box = widgets.HBox([], layout=widgets.Layout(flex_flow='row wrap', max_height='75px', overflow='auto', padding='4px', background_color='#0f172a'))
+    col_checklist_box = widgets.HBox([], layout=widgets.Layout(flex_flow='row wrap', max_height='85px', overflow='auto', padding='4px', background_color='#0f172a'))
 
-    btn_add_filter = widgets.Button(description="+ Add Column Filter", layout=widgets.Layout(width='160px'))
+    # Filter Controls (Side-by-Side Sizing)
+    btn_add_filter = widgets.Button(description="+ Filter", layout=widgets.Layout(width='90px'))
     btn_add_filter.add_class(f"{uid}_btn_primary")
 
-    btn_run_filter = widgets.Button(description="⚡ Run Polars Filter", layout=widgets.Layout(width='160px'))
+    btn_run_filter = widgets.Button(description="⚡ Run", layout=widgets.Layout(width='85px'))
     btn_run_filter.add_class(f"{uid}_btn_success")
 
-    btn_reset_filters = widgets.Button(description="↺ Reset Filters", layout=widgets.Layout(width='115px'))
+    btn_reset_filters = widgets.Button(description="↺ Reset", layout=widgets.Layout(width='80px'))
     btn_reset_filters.add_class(f"{uid}_btn_secondary")
 
     status_code_box = widgets.HTML(value="")
@@ -374,7 +377,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
                 value=is_checked,
                 description=f"{col} ({df_obj[col].dtype})",
                 indent=False,
-                layout=widgets.Layout(width='auto', margin='2px 4px')
+                layout=widgets.Layout(width='auto', margin='2px 3px')
             )
             chk.add_class(f"{uid}_col_chk_pill")
             if is_checked:
@@ -400,7 +403,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             return
         df_obj = dfs_dict[current_df_name]
         
-        col_dd = widgets.Dropdown(options=df_obj.columns, layout=widgets.Layout(width='190px'))
+        col_dd = widgets.Dropdown(options=df_obj.columns, layout=widgets.Layout(width='150px'))
         op_dd = widgets.Dropdown(
             options=[
                 ('contains', 'contains'),
@@ -408,18 +411,18 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
                 ('not equals (!=)', '!='),
                 ('starts with', 'starts_with'),
                 ('ends with', 'ends_with'),
-                ('> (greater than)', '>'),
-                ('>= (greater/equal)', '>='),
-                ('< (less than)', '<'),
-                ('<= (less/equal)', '<='),
+                ('> (greater)', '>'),
+                ('>= (greater/eq)', '>='),
+                ('< (less)', '<'),
+                ('<= (less/eq)', '<='),
                 ('is not null', 'is_not_null'),
                 ('is null', 'is_null')
             ],
             value='contains',
-            layout=widgets.Layout(width='160px')
+            layout=widgets.Layout(width='130px')
         )
-        val_txt = widgets.Text(placeholder="Filter value...", layout=widgets.Layout(width='210px'))
-        btn_del = widgets.Button(description="✕", layout=widgets.Layout(width='36px'))
+        val_txt = widgets.Text(placeholder="Value...", layout=widgets.Layout(width='140px'))
+        btn_del = widgets.Button(description="✕", layout=widgets.Layout(width='32px'))
         btn_del.add_class(f"{uid}_btn_danger")
 
         row_box = widgets.HBox([col_dd, op_dd, val_txt, btn_del], layout=widgets.Layout(margin='2px 0', align_items='center'))
@@ -484,7 +487,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
                             code_snippets.append(f'pl.col("{col}") == {num}')
                         except Exception:
                             filter_exprs.append(pl.col(col).cast(pl.Utf8) == val)
-                            code_snippets.append(f'pl.col("{col}").cast(pl.Utf8) == "{val}"')
+                            code_snippets.append(f'pl.col("{col}") == "{val}"')
                     else:
                         filter_exprs.append(pl.col(col).cast(pl.Utf8) == val)
                         code_snippets.append(f'pl.col("{col}") == "{val}"')
@@ -533,7 +536,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         # Status & Generated Code Info Box
         code_str = f'{current_df_name}.filter({" & ".join(code_snippets)})' if code_snippets else f'{current_df_name}.head({preview_rows})'
         status_html = f"""
-        <div style="background:#0f172a; border:1px solid #334155; border-radius:8px; padding:8px 12px; margin:8px 0;">
+        <div style="background:#0f172a; border:1px solid #334155; border-radius:8px; padding:8px 12px; margin:0 0 10px 0;">
             <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; margin-bottom:4px;">
                 <span style="color:#34d399; font-weight:600;">⚡ Matched {matched_count:,} of {df_obj.shape[0]:,} rows <span style="color:#94a3b8; font-weight:normal;">({elapsed_ms:.1f} ms)</span></span>
                 <span style="color:#38bdf8; font-family:monospace; font-size:11px;">Showing top {min(preview_rows, matched_count)} rows × {len(cols_to_show)} cols (Click header to sort · Drag edge to resize)</span>
@@ -744,7 +747,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         applied_columns.update(pending_cols)
         update_col_checkboxes()
 
-    # Construct the Quick Preview Tab Layout
+    # --- SIDE-BY-SIDE CONTROLS LAYOUT ---
     col_section_box = widgets.VBox([
         widgets.HBox([
             widgets.HTML("<span style='font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase;'>Columns:</span>"),
@@ -752,34 +755,40 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             btn_select_all_cols,
             btn_clear_all_cols,
             btn_apply_cols
-        ], layout=widgets.Layout(align_items='center', gap='6px', margin='0 0 5px 0')),
+        ], layout=widgets.Layout(align_items='center', gap='4px', margin='0 0 6px 0', width='100%')),
         col_checklist_box
-    ], layout=widgets.Layout(background_color='#0f172a', padding='8px', border='1px solid #334155', border_radius='8px', margin='0 0 8px 0'))
+    ], layout=widgets.Layout(flex='1 1 50%', min_width='340px', padding='10px', background_color='#0f172a', border='1px solid #334155', border_radius='8px'))
     col_section_box.add_class(f"{uid}_card_well")
 
     filter_section_box = widgets.VBox([
         widgets.HBox([
-            widgets.HTML("<span style='font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase;'>Parallel Column Filters:</span>"),
+            widgets.HTML("<span style='font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase;'>Filters:</span>"),
             btn_add_filter,
             btn_run_filter,
             btn_reset_filters
-        ], layout=widgets.Layout(align_items='center', gap='6px', margin='0 0 6px 0')),
+        ], layout=widgets.Layout(align_items='center', gap='4px', margin='0 0 6px 0', width='100%')),
         filter_rows_container
-    ], layout=widgets.Layout(background_color='#0f172a', padding='8px', border='1px solid #334155', border_radius='8px', margin='0 0 8px 0'))
+    ], layout=widgets.Layout(flex='1 1 50%', min_width='340px', padding='10px', background_color='#0f172a', border='1px solid #334155', border_radius='8px'))
     filter_section_box.add_class(f"{uid}_card_well")
 
-    quick_preview_box = widgets.VBox([
-        # Header toolbar row
-        widgets.HBox([
-            df_dropdown,
-            shape_label
-        ], layout=widgets.Layout(align_items='center', margin='0 0 8px 0', width='100%')),
-        
+    # Middle Row: Side-by-Side Panels
+    side_by_side_controls = widgets.HBox([
         col_section_box,
-        filter_section_box,
+        filter_section_box
+    ], layout=widgets.Layout(width='100%', gap='10px', margin='0 0 10px 0', align_items='stretch'))
+
+    # Top Header Row: DataFrame selection with clean bottom divider line
+    df_header_row = widgets.HBox([
+        df_dropdown,
+        shape_label
+    ], layout=widgets.Layout(align_items='center', margin='0 0 10px 0', padding='0 0 10px 0', border_bottom='1px solid #334155', width='100%'))
+
+    quick_preview_box = widgets.VBox([
+        df_header_row,
+        side_by_side_controls,
         status_code_box,
         preview_output
-    ], layout=widgets.Layout(padding='12px', background_color='#1e293b', border_radius='10px'))
+    ], layout=widgets.Layout(padding='12px', background_color='#1e293b', border_radius='10px', width='100%'))
 
     widget_wrapper = widgets.Box([quick_preview_box], layout=widgets.Layout(display='block', background_color='#1e293b'))
     widget_wrapper.add_class(f"{uid}_widget_pane_container")
