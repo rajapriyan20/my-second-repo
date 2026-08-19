@@ -6,16 +6,17 @@ import ipywidgets as widgets
 import polars as pl
 from IPython.display import HTML, display
 
-TOOLKIT_VERSION = "v2.7"
+TOOLKIT_VERSION = "v2.8"
 
 def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filename: str = "polars_jupyter_helper.html"):
     """
-    Rajapriyan Coding Toolkit (v2.7):
-    - Side-by-Side Column Selection & Parallel Filter Builders
-    - Clean 1px Divider Lines Between Sections (Zero white gap bleeding)
-    - Full-Dataset Polars Query Engine (handles millions of rows in ms)
-    - 100% Dark Blue & Slate Theme across all controls & headers
-    - Excel/SAS Viya Mouse-Draggable Column Resizing + 3-State Sorting
+    Rajapriyan Coding Toolkit (v2.8):
+    - Redesigned Tactile Rounded Buttons (All, Clear, Apply, Add Filter, Run, Reset)
+    - Modern Rounded Pill Search Boxes with Focus Glow
+    - Side-by-Side Column Selection & Filter Panels with Dark Wells
+    - 100% Dark Blue/Slate Palette & Zero White Background Bleeding
+    - Full-Dataset Polars Engine (filters millions of rows in ms)
+    - Mouse-Draggable Column Header Resizing + 3-State Sorting (Asc/Desc/Orig)
     - Sleek Compact Launcher Pill Button
     """
     # 1. Discover Polars DataFrames in active Jupyter interactive session
@@ -67,10 +68,10 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
 
     metadata_json = json.dumps(dfs_metadata)
 
-    # 2. Master CSS Styles (Forces Dark Blue Everywhere & Clean Dividers)
+    # 2. Master CSS Styles (Tactile Rounded Buttons & Search Pill Inputs)
     css_styles = f"""
     <style>
-        /* Force Root Dark Palette across all Jupyter / ipywidgets elements */
+        /* Force Root Dark Palette across all wrappers */
         #{uid}_root,
         #{uid}_widget_pane_container,
         #{uid}_widget_pane_container .widget-box,
@@ -101,61 +102,98 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             text-transform: uppercase !important;
         }}
 
-        /* Dropdowns & Text Inputs */
-        #{uid}_widget_pane_container select,
+        /* Modern Rounded Search Boxes & Text Inputs */
         #{uid}_widget_pane_container input[type="text"],
-        #{uid}_root select,
-        #{uid}_root input[type="text"] {{
+        #{uid}_root input[type="text"],
+        #{uid}_widget_pane_container select,
+        #{uid}_root select {{
             background-color: #0f172a !important;
             color: #38bdf8 !important;
             border: 1px solid #475569 !important;
-            border-radius: 6px !important;
+            border-radius: 8px !important;
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
             font-size: 12px !important;
-            padding: 4px 8px !important;
+            padding: 5px 10px !important;
             outline: none !important;
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4) !important;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
         }}
+        #{uid}_widget_pane_container input[type="text"]:focus,
+        #{uid}_root input[type="text"]:focus,
         #{uid}_widget_pane_container select:focus,
-        #{uid}_widget_pane_container input[type="text"]:focus {{
+        #{uid}_root select:focus {{
             border-color: #06b6d4 !important;
-            box-shadow: 0 0 0 1px #06b6d4 !important;
+            box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.25) !important;
         }}
 
-        /* Tactile Rounded Buttons */
-        .{uid}_btn_primary button {{
-            background: linear-gradient(135deg, #0284c7, #0369a1) !important;
-            color: #ffffff !important;
-            border-radius: 6px !important;
+        /* Base Tactile Button Reset */
+        #{uid}_widget_pane_container .widget-button button {{
+            border-radius: 8px !important;
+            font-size: 12px !important;
             font-weight: 600 !important;
-            border: 1px solid #38bdf8 !important;
+            padding: 4px 12px !important;
+            cursor: pointer !important;
+            transition: all 0.15s ease-in-out !important;
             box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
+            height: 28px !important;
+            line-height: 18px !important;
+            border: 1px solid transparent !important;
         }}
-        .{uid}_btn_success button {{
-            background: linear-gradient(135deg, #059669, #047857) !important;
-            color: #ffffff !important;
-            border-radius: 6px !important;
-            font-weight: 600 !important;
-            border: 1px solid #34d399 !important;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
-        }}
-        .{uid}_btn_secondary button {{
-            background: #334155 !important;
-            color: #e2e8f0 !important;
-            border-radius: 6px !important;
-            font-weight: 600 !important;
-            border: 1px solid #475569 !important;
-        }}
-        .{uid}_btn_danger button {{
-            background: linear-gradient(135deg, #e11d48, #be123c) !important;
-            color: #ffffff !important;
-            border-radius: 6px !important;
-            font-weight: 700 !important;
-            border: 1px solid #fb7185 !important;
-        }}
-
         #{uid}_widget_pane_container .widget-button button:hover {{
             filter: brightness(1.15) !important;
             transform: translateY(-1px) !important;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.4) !important;
+        }}
+        #{uid}_widget_pane_container .widget-button button:active {{
+            transform: translateY(0px) !important;
+            filter: brightness(0.95) !important;
+        }}
+
+        /* 1, 2, 6: Secondary Buttons (All, Clear, Reset) */
+        .{uid}_btn_secondary button {{
+            background: linear-gradient(180deg, #334155, #1e293b) !important;
+            color: #f1f5f9 !important;
+            border: 1px solid #475569 !important;
+        }}
+        .{uid}_btn_secondary button:hover {{
+            background: linear-gradient(180deg, #475569, #334155) !important;
+            border-color: #64748b !important;
+            color: #ffffff !important;
+        }}
+
+        /* 3: Apply Button */
+        .{uid}_btn_apply button {{
+            background: linear-gradient(135deg, #0284c7, #0369a1) !important;
+            color: #ffffff !important;
+            border: 1px solid #38bdf8 !important;
+            box-shadow: 0 2px 6px rgba(2, 132, 199, 0.35) !important;
+        }}
+
+        /* 4: Add Filter Button */
+        .{uid}_btn_add_filter button {{
+            background: linear-gradient(135deg, #6366f1, #4f46e5) !important;
+            color: #ffffff !important;
+            border: 1px solid #a5b4fc !important;
+            box-shadow: 0 2px 6px rgba(99, 102, 241, 0.35) !important;
+        }}
+
+        /* 5: Run Filter Button */
+        .{uid}_btn_run_filter button {{
+            background: linear-gradient(135deg, #059669, #047857) !important;
+            color: #ffffff !important;
+            border: 1px solid #34d399 !important;
+            box-shadow: 0 2px 6px rgba(5, 150, 105, 0.35) !important;
+        }}
+
+        /* Delete Filter Button */
+        .{uid}_btn_danger button {{
+            background: linear-gradient(135deg, #e11d48, #be123c) !important;
+            color: #ffffff !important;
+            border: 1px solid #fb7185 !important;
+            border-radius: 6px !important;
+            padding: 2px 6px !important;
+            height: 26px !important;
+            line-height: 14px !important;
         }}
 
         /* Compact Card-Like Column Selection Pills */
@@ -319,7 +357,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
     applied_columns = set()
     pending_cols = set()
 
-    # Toolbar Controls with Button Styles
+    # Toolbar Controls
     df_dropdown = widgets.Dropdown(
         options=list(dfs_dict.keys()) if dfs_dict else ["No DataFrame Found"],
         value=current_df_name,
@@ -329,10 +367,10 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
     )
     
     shape_label = widgets.HTML(
-        value=f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:5px 10px; border-radius:6px; font-size:12px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape'] if current_df_name else '0 rows'}</span>"
+        value=f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:5px 10px; border-radius:8px; font-size:12px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape'] if current_df_name else '0 rows'}</span>"
     )
 
-    # Column Controls (Side-by-Side Sizing)
+    # Column Controls with Rounded Tactical Button Classes
     col_search_input = widgets.Text(placeholder="🔍 Search...", layout=widgets.Layout(width='125px'))
     
     btn_select_all_cols = widgets.Button(description="All", layout=widgets.Layout(width='55px'))
@@ -342,17 +380,16 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
     btn_clear_all_cols.add_class(f"{uid}_btn_secondary")
     
     btn_apply_cols = widgets.Button(description="✓ Apply", layout=widgets.Layout(width='85px'))
-    btn_apply_cols.add_class(f"{uid}_btn_primary")
+    btn_apply_cols.add_class(f"{uid}_btn_apply")
 
-    # Column checklist box
     col_checklist_box = widgets.HBox([], layout=widgets.Layout(flex_flow='row wrap', max_height='85px', overflow='auto', padding='4px', background_color='#0f172a'))
 
-    # Filter Controls (Side-by-Side Sizing)
+    # Filter Controls with Rounded Tactical Button Classes
     btn_add_filter = widgets.Button(description="+ Filter", layout=widgets.Layout(width='90px'))
-    btn_add_filter.add_class(f"{uid}_btn_primary")
+    btn_add_filter.add_class(f"{uid}_btn_add_filter")
 
     btn_run_filter = widgets.Button(description="⚡ Run", layout=widgets.Layout(width='85px'))
-    btn_run_filter.add_class(f"{uid}_btn_success")
+    btn_run_filter.add_class(f"{uid}_btn_run_filter")
 
     btn_reset_filters = widgets.Button(description="↺ Reset", layout=widgets.Layout(width='80px'))
     btn_reset_filters.add_class(f"{uid}_btn_secondary")
@@ -487,7 +524,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
                             code_snippets.append(f'pl.col("{col}") == {num}')
                         except Exception:
                             filter_exprs.append(pl.col(col).cast(pl.Utf8) == val)
-                            code_snippets.append(f'pl.col("{col}") == "{val}"')
+                            code_snippets.append(f'pl.col("{col}").cast(pl.Utf8) == "{val}"')
                     else:
                         filter_exprs.append(pl.col(col).cast(pl.Utf8) == val)
                         code_snippets.append(f'pl.col("{col}") == "{val}"')
@@ -541,7 +578,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
                 <span style="color:#34d399; font-weight:600;">⚡ Matched {matched_count:,} of {df_obj.shape[0]:,} rows <span style="color:#94a3b8; font-weight:normal;">({elapsed_ms:.1f} ms)</span></span>
                 <span style="color:#38bdf8; font-family:monospace; font-size:11px;">Showing top {min(preview_rows, matched_count)} rows × {len(cols_to_show)} cols (Click header to sort · Drag edge to resize)</span>
             </div>
-            <div style="font-family:monospace; font-size:11px; color:#94a3b8; background:#1e293b; padding:5px 10px; border-radius:5px; overflow-x:auto;">
+            <div style="font-family:monospace; font-size:11px; color:#94a3b8; background:#1e293b; padding:5px 10px; border-radius:6px; overflow-x:auto;">
                 <span style="color:#38bdf8;">Code:</span> {html.escape(code_str)}
             </div>
         </div>
@@ -687,7 +724,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         current_df_name = change['new']
         if current_df_name and current_df_name in dfs_dict:
             df_obj = dfs_dict[current_df_name]
-            shape_label.value = f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:5px 10px; border-radius:6px; font-size:12px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape']}</span>"
+            shape_label.value = f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:5px 10px; border-radius:8px; font-size:12px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape']}</span>"
             pending_cols.clear()
             pending_cols.update(df_obj.columns[:8])
             applied_columns.clear()
