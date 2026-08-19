@@ -6,15 +6,16 @@ import ipywidgets as widgets
 import polars as pl
 from IPython.display import HTML, display
 
-TOOLKIT_VERSION = "v3.3"
+TOOLKIT_VERSION = "v3.4"
 
-def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filename: str = "polars_jupyter_helper.html"):
+def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filename: str = "polars_jupyter_helper.html"):
     """
-    Rajapriyan Coding Toolkit (v3.3):
+    Rajapriyan Coding Toolkit (v3.4):
+    - 70% / 30% Split: Column Selection (70%) and Parallel Filters (30%)
+    - Adaptive Column Width: min(predefined_max_width, content_fit_width) with '...' truncation
+    - Default 500 Records with 'Load +500 More' Pagination Button
     - 100% Solid Dark Theme: Completely eliminates white gaps & canvas bleed
-    - Integrated Header Bar: DataFrame selection & shape badge in top header line
-    - Maximized Vertical Screen Space with 560px+ table viewport
-    - Side-by-Side Column Selection & Parallel Filter Panels
+    - Integrated Header Bar: Active DataFrame selection & shape badge in top header line
     - Full-Dataset Polars Query Engine (handles millions of rows in ms)
     - Mouse-Draggable Column Resizing + 3-State Sorting (Asc/Desc/Orig)
     - Tactile Rounded Gradient Buttons & Compact Launcher Pill
@@ -201,6 +202,21 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             height: 24px !important;
             min-width: 26px !important;
         }}
+        .raj_btn_load_more button {{
+            background: linear-gradient(135deg, #0369a1, #0284c7) !important;
+            color: #ffffff !important;
+            border: 1px solid #38bdf8 !important;
+            box-shadow: 0 2px 6px rgba(2, 132, 199, 0.4) !important;
+            font-weight: 700 !important;
+            font-size: 11px !important;
+            border-radius: 8px !important;
+            height: 28px !important;
+            padding: 0 16px !important;
+        }}
+        .raj_btn_load_more button:hover {{
+            background: linear-gradient(135deg, #0284c7, #38bdf8) !important;
+            transform: translateY(-1px) !important;
+        }}
 
         /* Compact Card-Like Column Selection Pills */
         .{uid}_col_chk_pill {{
@@ -239,7 +255,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             font-weight: 600 !important;
         }}
 
-        /* Resizable Table Layout with Fixed Widths & Ellipsis */
+        /* Resizable Table Layout with Adaptive Widths & Ellipsis */
         table.{uid}_res_table {{
             border-collapse: separate !important;
             border-spacing: 0 !important;
@@ -362,6 +378,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
     current_df_name = list(dfs_dict.keys())[0] if dfs_dict else None
     applied_columns = set()
     pending_cols = set()
+    current_limit = preview_rows  # Starts at 500
 
     # Toolbar Controls
     df_dropdown = widgets.Dropdown(
@@ -376,31 +393,36 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         value=f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape'] if current_df_name else '0 rows'}</span>"
     )
 
-    # Column Controls
-    col_search_input = widgets.Text(placeholder="🔍 Search...", layout=widgets.Layout(width='110px'))
+    # Column Controls (70% Panel)
+    col_search_input = widgets.Text(placeholder="🔍 Search...", layout=widgets.Layout(width='120px'))
     
-    btn_select_all_cols = widgets.Button(description="All", layout=widgets.Layout(width='45px'))
+    btn_select_all_cols = widgets.Button(description="All", layout=widgets.Layout(width='50px'))
     btn_select_all_cols.add_class("raj_btn_secondary")
     
-    btn_clear_all_cols = widgets.Button(description="Clear", layout=widgets.Layout(width='50px'))
+    btn_clear_all_cols = widgets.Button(description="Clear", layout=widgets.Layout(width='55px'))
     btn_clear_all_cols.add_class("raj_btn_secondary")
     
-    btn_apply_cols = widgets.Button(description="✓ Apply", layout=widgets.Layout(width='75px'))
+    btn_apply_cols = widgets.Button(description="✓ Apply", layout=widgets.Layout(width='80px'))
     btn_apply_cols.add_class("raj_btn_apply")
 
     col_checklist_box = widgets.HBox([], layout=widgets.Layout(flex_flow='row wrap', max_height='68px', overflow='auto', padding='2px', background_color='#0f172a', margin='0'))
 
-    # Filter Controls
-    btn_add_filter = widgets.Button(description="+ Filter", layout=widgets.Layout(width='80px'))
+    # Filter Controls (30% Panel)
+    btn_add_filter = widgets.Button(description="+ Filter", layout=widgets.Layout(width='70px'))
     btn_add_filter.add_class("raj_btn_add_filter")
 
-    btn_run_filter = widgets.Button(description="⚡ Run", layout=widgets.Layout(width='75px'))
+    btn_run_filter = widgets.Button(description="⚡ Run", layout=widgets.Layout(width='65px'))
     btn_run_filter.add_class("raj_btn_run_filter")
 
-    btn_reset_filters = widgets.Button(description="↺ Reset", layout=widgets.Layout(width='70px'))
+    btn_reset_filters = widgets.Button(description="↺ Reset", layout=widgets.Layout(width='65px'))
     btn_reset_filters.add_class("raj_btn_secondary")
 
     status_code_box = widgets.HTML(value="")
+
+    # Load More Button
+    btn_load_more = widgets.Button(description="⬇ Load +500 More Records", layout=widgets.Layout(width='auto', height='28px'))
+    btn_load_more.add_class("raj_btn_load_more")
+    load_more_box = widgets.HBox([btn_load_more], layout=widgets.Layout(justify_content='center', margin='6px 0 0 0', width='100%'))
 
     def update_col_checkboxes():
         if not current_df_name or current_df_name not in dfs_dict:
@@ -446,7 +468,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             return
         df_obj = dfs_dict[current_df_name]
         
-        col_dd = widgets.Dropdown(options=df_obj.columns, layout=widgets.Layout(width='140px'))
+        col_dd = widgets.Dropdown(options=df_obj.columns, layout=widgets.Layout(flex='1 1 32%', min_width='75px', max_width='115px'))
         op_dd = widgets.Dropdown(
             options=[
                 ('contains', 'contains'),
@@ -462,13 +484,12 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
                 ('is null', 'is_null')
             ],
             value='contains',
-            layout=widgets.Layout(width='120px')
-        )
-        val_txt = widgets.Text(placeholder="Value...", layout=widgets.Layout(width='130px'))
-        btn_del = widgets.Button(description="✕", layout=widgets.Layout(width='28px'))
+            layout=widgets.Layout(flex='1 1 30%', min_width='70px', max_width='95px'))
+        val_txt = widgets.Text(placeholder="Val...", layout=widgets.Layout(flex='1 1 30%', min_width='65px', max_width='95px'))
+        btn_del = widgets.Button(description="✕", layout=widgets.Layout(width='24px', height='24px'))
         btn_del.add_class("raj_btn_danger")
 
-        row_box = widgets.HBox([col_dd, op_dd, val_txt, btn_del], layout=widgets.Layout(margin='1px 0', align_items='center'))
+        row_box = widgets.HBox([col_dd, op_dd, val_txt, btn_del], layout=widgets.Layout(margin='1px 0', align_items='center', width='100%'))
         
         filter_item = {
             "widget": row_box,
@@ -487,10 +508,12 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         filter_rows_container.children = [f["widget"] for f in active_filters]
 
     def render_polars_table():
+        nonlocal current_limit
         if not current_df_name or current_df_name not in dfs_dict:
             with preview_output:
                 preview_output.clear_output()
                 display(HTML("<div style='padding:12px; color:#64748b;'>No active Polars DataFrame selected.</div>"))
+            load_more_box.layout.display = 'none'
             return
 
         df_obj = dfs_dict[current_df_name]
@@ -530,7 +553,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
                             code_snippets.append(f'pl.col("{col}") == {num}')
                         except Exception:
                             filter_exprs.append(pl.col(col).cast(pl.Utf8) == val)
-                            code_snippets.append(f'pl.col("{col}").cast(pl.Utf8) == "{val}"')
+                            code_snippets.append(f'pl.col("{col}") == "{val}"')
                     else:
                         filter_exprs.append(pl.col(col).cast(pl.Utf8) == val)
                         code_snippets.append(f'pl.col("{col}") == "{val}"')
@@ -562,6 +585,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             with preview_output:
                 preview_output.clear_output()
                 display(HTML(f"<div style='padding:12px; color:#f87171;'>Polars Filter Error: {html.escape(str(err))}</div>"))
+            load_more_box.layout.display = 'none'
             return
 
         elapsed_ms = (time.time() - t0) * 1000
@@ -574,15 +598,35 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             applied_columns.clear()
             applied_columns.update(cols_to_show)
 
-        slice_df = filtered_df.select(cols_to_show).head(preview_rows)
+        slice_df = filtered_df.select(cols_to_show).head(current_limit)
+        visible_rows_count = slice_df.shape[0]
+
+        # Adaptive Column Width Calculation: min(150, content_fit_width)
+        MAX_PREDEFINED_WIDTH = 150
+        MIN_FLOOR_WIDTH = 55
+        col_widths = {}
+
+        for col in cols_to_show:
+            header_char_len = len(str(col)) + 3  # Space for sort icon & padding
+            max_val_len = 0
+            # Sample up to first 100 rows for high-performance width calculation
+            for v in slice_df[col].head(100):
+                if v is not None:
+                    max_val_len = max(max_val_len, len(str(v)))
+            
+            max_chars = max(header_char_len, max_val_len)
+            content_fit_width = max_chars * 8 + 20
+            # Whichever is minimum between predefined fixed width (150) and content fit width
+            calculated_width = min(MAX_PREDEFINED_WIDTH, max(MIN_FLOOR_WIDTH, content_fit_width))
+            col_widths[col] = calculated_width
 
         # Status & Generated Code Info Box
-        code_str = f'{current_df_name}.filter({" & ".join(code_snippets)})' if code_snippets else f'{current_df_name}.head({preview_rows})'
+        code_str = f'{current_df_name}.filter({" & ".join(code_snippets)})' if code_snippets else f'{current_df_name}.head({visible_rows_count})'
         status_html = f"""
         <div style="background:#0f172a; border:1px solid #334155; border-radius:6px; padding:5px 10px; margin:0 0 6px 0; display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:11px;">
             <div style="display:flex; align-items:center; gap:8px; white-space:nowrap;">
                 <span style="color:#34d399; font-weight:600;">⚡ {matched_count:,} / {df_obj.shape[0]:,} rows <span style="color:#94a3b8; font-weight:normal;">({elapsed_ms:.1f} ms)</span></span>
-                <span style="color:#38bdf8; font-family:monospace;">({min(preview_rows, matched_count)} rows × {len(cols_to_show)} cols)</span>
+                <span style="color:#38bdf8; font-family:monospace;">(Showing {visible_rows_count:,} of {matched_count:,} rows × {len(cols_to_show)} cols)</span>
             </div>
             <div style="font-family:monospace; font-size:10px; color:#94a3b8; background:#1e293b; padding:2px 8px; border-radius:4px; overflow-x:auto; flex:1; text-align:right;">
                 <span style="color:#38bdf8;">Code:</span> {html.escape(code_str)}
@@ -591,19 +635,22 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         """
         status_code_box.value = status_html
 
-        # Table Geometry with 3-State Sort & Draggable Width Resizing
+        # Table Geometry with Adaptive Widths, 3-State Sort & Draggable Resizing
         table_id = f"{uid}_res_table_el"
         th_cells = f'<th style="width:45px; min-width:45px; max-width:45px; text-align:center; position:relative; cursor:default;" data-no-sort="true">#</th>'
         for col in cols_to_show:
-            th_cells += f'<th style="width:150px; min-width:150px; max-width:150px; position:relative;" title="Click to sort (Asc/Desc/Orig) · Drag edge to resize" data-sort="none"><span class="col-title">{html.escape(col)}</span><span class="sort-icon" style="color:#64748b; margin-left:3px; font-size:9px;"></span><div class="{uid}_resizer"></div></th>'
+            w = col_widths[col]
+            th_cells += f'<th style="width:{w}px; min-width:{w}px; max-width:{w}px; position:relative;" title="Click to sort (Asc/Desc/Orig) · Drag edge to resize" data-sort="none"><span class="col-title">{html.escape(col)}</span><span class="sort-icon" style="color:#64748b; margin-left:3px; font-size:9px;"></span><div class="{uid}_resizer"></div></th>'
         
         tbody_rows = ""
         for r_idx, row in enumerate(slice_df.iter_rows()):
             row_class = "row-even" if (r_idx % 2 == 0) else "row-odd"
             td_cells = f'<td style="width:45px; min-width:45px; max-width:45px; text-align:center; color:#64748b;" data-orig-row="{r_idx}">{r_idx + 1}</td>'
-            for val in row:
+            for c_idx, val in enumerate(row):
+                col_name = cols_to_show[c_idx]
+                w = col_widths[col_name]
                 v_str = str(val) if val is not None else "null"
-                td_cells += f'<td style="width:150px; min-width:150px; max-width:150px;" title="{html.escape(v_str)}">{html.escape(v_str)}</td>'
+                td_cells += f'<td style="width:{w}px; min-width:{w}px; max-width:{w}px;" title="{html.escape(v_str)}">{html.escape(v_str)}</td>'
             tbody_rows += f'<tr class="{row_class}" data-orig-idx="{r_idx}">{td_cells}</tr>'
 
         if matched_count == 0:
@@ -642,7 +689,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
 
                         function onMouseMove(ev) {{
                             var currentX = ev.pageX || ev.clientX;
-                            var newWidth = Math.max(50, startWidth + (currentX - startX));
+                            var newWidth = Math.max(45, startWidth + (currentX - startX));
                             th.style.width = newWidth + "px";
                             th.style.minWidth = newWidth + "px";
                             th.style.maxWidth = newWidth + "px";
@@ -724,10 +771,26 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             preview_output.clear_output()
             display(HTML(table_html))
 
+        # Update Pagination "Load More" Button Visibility & Description
+        if matched_count > visible_rows_count:
+            btn_load_more.description = f"⬇ Load +500 More Records (Showing {visible_rows_count:,} of {matched_count:,})"
+            load_more_box.layout.display = 'flex'
+        else:
+            load_more_box.layout.display = 'none'
+
+    # Pagination Handler
+    def on_load_more_click(b):
+        nonlocal current_limit
+        current_limit += 500
+        render_polars_table()
+
+    btn_load_more.on_click(on_load_more_click)
+
     # Event Handlers
     def on_df_change(change):
-        nonlocal current_df_name
+        nonlocal current_df_name, current_limit
         current_df_name = change['new']
+        current_limit = preview_rows  # Reset to default 500
         if current_df_name and current_df_name in dfs_dict:
             df_obj = dfs_dict[current_df_name]
             shape_label.value = f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape']}</span>"
@@ -775,10 +838,14 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
     btn_add_filter.on_click(on_add_filter_click)
 
     def on_run_filter_click(b):
+        nonlocal current_limit
+        current_limit = preview_rows  # Reset pagination on new filter run
         render_polars_table()
     btn_run_filter.on_click(on_run_filter_click)
 
     def on_reset_filters_click(b):
+        nonlocal current_limit
+        current_limit = preview_rows
         active_filters.clear()
         filter_rows_container.children = []
         render_polars_table()
@@ -790,7 +857,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         applied_columns.update(pending_cols)
         update_col_checkboxes()
 
-    # --- SIDE-BY-SIDE CONTROLS LAYOUT (Solid Dark Wells) ---
+    # --- 70% / 30% SIDE-BY-SIDE CONTROLS LAYOUT ---
     col_section_box = widgets.VBox([
         widgets.HBox([
             widgets.HTML("<span style='font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;'>Columns:</span>"),
@@ -800,7 +867,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             btn_apply_cols
         ], layout=widgets.Layout(align_items='center', gap='3px', margin='0 0 3px 0', width='100%')),
         col_checklist_box
-    ], layout=widgets.Layout(flex='1 1 50%', min_width='320px', padding='6px 8px', margin='0'))
+    ], layout=widgets.Layout(flex='7 7 70%', min_width='300px', padding='6px 8px', margin='0'))
     col_section_box.add_class("panel_card")
 
     filter_section_box = widgets.VBox([
@@ -811,7 +878,7 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
             btn_reset_filters
         ], layout=widgets.Layout(align_items='center', gap='3px', margin='0 0 3px 0', width='100%')),
         filter_rows_container
-    ], layout=widgets.Layout(flex='1 1 50%', min_width='320px', padding='6px 8px', margin='0'))
+    ], layout=widgets.Layout(flex='3 3 30%', min_width='220px', padding='6px 8px', margin='0'))
     filter_section_box.add_class("panel_card")
 
     side_by_side_controls = widgets.HBox([
@@ -831,7 +898,8 @@ def launch_polars_helper(preview_rows: int = 50, save_html: bool = True, filenam
         df_embedded_bar,
         side_by_side_controls,
         status_code_box,
-        preview_output
+        preview_output,
+        load_more_box
     ], layout=widgets.Layout(width='100%', margin='0', padding='0'))
 
     # Initial table render
@@ -1200,7 +1268,7 @@ with pl.Config(tbl_rows=100, tbl_cols=50, fmt_str_lengths=100):
     # HTML host div for the Quick Preview section
     preview_host_div = widgets.HTML(f"<div id='{uid}_preview_host' style='display:block; width:100%;'></div>")
 
-    # The Master Container widget (Holds Header HTML, Cheat Sheets, & Quick Preview widgets together)
+    # The Master Container widget
     master_box = widgets.VBox([
         widgets.HTML(toolkit_html),
         preview_host_div,
