@@ -6,18 +6,19 @@ import ipywidgets as widgets
 import polars as pl
 from IPython.display import HTML, display
 
-TOOLKIT_VERSION = "v3.7"
+TOOLKIT_VERSION = "v3.8"
 
 def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filename: str = "polars_jupyter_helper.html"):
     """
-    Rajapriyan Coding Toolkit (v3.7):
-    - Compact Execution Code Box: Tight line-height (1.25) for multiline wrapped code
+    Rajapriyan Coding Toolkit (v3.8):
+    - Fixed Vertical Text Clipping in DataFrame Dropdown
+    - Modern Tactile Rounded Gradient Buttons (All, Clear, Apply, Filter, Run, Reset)
+    - Compact Execution Code Box with Tight Multiline Spacing
     - Full Support for pl.DataFrame & pl.LazyFrame (scan_parquet, scan_csv, scan_ipc)
-    - Lazy Projection & Predicate Pushdown: Only scans selected columns & filtered rows
-    - 70% / 30% Split: Column Selection (70%) and Parallel Filters (30%)
-    - Adaptive Column Width: min(150px, content_fit_width) with '...' truncation
+    - 70% (Columns) / 30% (Filters) Side-by-Side Split
+    - Adaptive Column Width: min(150px, content_fit_width) with '...' Truncation
     - Default 500 Records with 'Load +500 More' Pagination Button
-    - 100% Solid Dark Slate Theme: Completely eliminates white gaps & canvas bleed
+    - 100% Solid Dark Slate Theme with Zero White Canvas Bleeding
     - Mouse-Draggable Column Resizing + 3-State Sorting (Asc/Desc/Orig)
     """
     # 1. Discover Polars DataFrames and LazyFrames in active session
@@ -100,7 +101,7 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
 
     metadata_json = json.dumps(dfs_metadata)
 
-    # 2. Master CSS Styles (Total Dark Theme Override with Zero White Bleed)
+    # 2. Master CSS Styles (Total Dark Theme Override + Graphical Button Elements)
     css_styles = f"""
     <style>
         .raj_root_{uid},
@@ -152,22 +153,44 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
             font-size: 11px !important;
             font-weight: 700 !important;
             text-transform: uppercase !important;
+            height: auto !important;
+            line-height: 28px !important;
         }}
 
-        /* Modern Rounded Inputs & Search Pills */
-        .raj_root_{uid} input[type="text"],
-        .raj_root_{uid} select {{
+        /* Dropdowns & Text Inputs (Fixed Vertical Text Clipping) */
+        .raj_root_{uid} select,
+        .raj_root_{uid} .widget-dropdown select {{
             background-color: #0f172a !important;
             color: #38bdf8 !important;
             border: 1px solid #475569 !important;
             border-radius: 6px !important;
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
-            font-size: 11px !important;
-            padding: 3px 8px !important;
+            font-size: 11.5px !important;
+            font-weight: 600 !important;
+            padding: 4px 8px !important;
             outline: none !important;
+            height: 30px !important;
+            min-height: 30px !important;
+            line-height: 1.4 !important;
+            vertical-align: middle !important;
             box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4) !important;
             transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
-            height: 26px !important;
+        }}
+        .raj_root_{uid} input[type="text"],
+        .raj_root_{uid} .widget-text input {{
+            background-color: #0f172a !important;
+            color: #38bdf8 !important;
+            border: 1px solid #475569 !important;
+            border-radius: 6px !important;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+            font-size: 11.5px !important;
+            padding: 4px 8px !important;
+            outline: none !important;
+            height: 28px !important;
+            min-height: 28px !important;
+            line-height: 1.3 !important;
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4) !important;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
         }}
         .raj_root_{uid} input[type="text"]:focus,
         .raj_root_{uid} select:focus {{
@@ -175,76 +198,94 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
             box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.25) !important;
         }}
 
-        /* Tactile Rounded Buttons */
-        .raj_root_{uid} .widget-button button {{
+        /* ================= MODERN GRAPHICAL BUTTON STYLING ================= */
+        .raj_root_{uid} .widget-button button,
+        .raj_root_{uid} button.jupyter-button {{
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
             border-radius: 6px !important;
             font-size: 11px !important;
-            font-weight: 600 !important;
-            padding: 2px 10px !important;
+            font-weight: 700 !important;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
             cursor: pointer !important;
             transition: all 0.15s ease-in-out !important;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
-            height: 26px !important;
-            line-height: 16px !important;
+            height: 28px !important;
+            min-height: 28px !important;
+            padding: 0 12px !important;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
             border: 1px solid transparent !important;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6) !important;
+            outline: none !important;
+            letter-spacing: 0.3px !important;
         }}
-        .raj_root_{uid} .widget-button button:hover {{
-            filter: brightness(1.15) !important;
+        .raj_root_{uid} .widget-button button:hover,
+        .raj_root_{uid} button.jupyter-button:hover {{
+            filter: brightness(1.18) !important;
             transform: translateY(-1px) !important;
-            box-shadow: 0 3px 6px rgba(0,0,0,0.4) !important;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
         }}
-        .raj_root_{uid} .widget-button button:active {{
+        .raj_root_{uid} .widget-button button:active,
+        .raj_root_{uid} button.jupyter-button:active {{
             transform: translateY(0px) !important;
             filter: brightness(0.95) !important;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4) !important;
         }}
 
-        /* Button Gradients */
-        .raj_btn_secondary button {{
-            background: linear-gradient(180deg, #334155, #1e293b) !important;
+        /* 1, 2, 6: Secondary Action Buttons (All, Clear, Reset) */
+        .raj_root_{uid} .raj_btn_secondary button {{
+            background: linear-gradient(180deg, #3b4d66 0%, #1e293b 100%) !important;
             color: #f1f5f9 !important;
             border: 1px solid #475569 !important;
         }}
-        .raj_btn_apply button {{
-            background: linear-gradient(135deg, #0284c7, #0369a1) !important;
+
+        /* 3: Apply Button (Vibrant Cyan / Sky) */
+        .raj_root_{uid} .raj_btn_apply button {{
+            background: linear-gradient(180deg, #0284c7 0%, #0369a1 100%) !important;
             color: #ffffff !important;
             border: 1px solid #38bdf8 !important;
-            box-shadow: 0 2px 6px rgba(2, 132, 199, 0.35) !important;
+            box-shadow: 0 2px 6px rgba(2, 132, 199, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
         }}
-        .raj_btn_add_filter button {{
-            background: linear-gradient(135deg, #6366f1, #4f46e5) !important;
+
+        /* 4: Add Filter Button (Indigo / Violet) */
+        .raj_root_{uid} .raj_btn_add_filter button {{
+            background: linear-gradient(180deg, #6366f1 0%, #4f46e5 100%) !important;
             color: #ffffff !important;
             border: 1px solid #818cf8 !important;
-            box-shadow: 0 2px 6px rgba(99, 102, 241, 0.35) !important;
+            box-shadow: 0 2px 6px rgba(99, 102, 241, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
         }}
-        .raj_btn_run_filter button {{
-            background: linear-gradient(135deg, #059669, #047857) !important;
+
+        /* 5: Run Filter Button (Emerald Green) */
+        .raj_root_{uid} .raj_btn_run_filter button {{
+            background: linear-gradient(180deg, #059669 0%, #047857 100%) !important;
             color: #ffffff !important;
             border: 1px solid #34d399 !important;
-            box-shadow: 0 2px 6px rgba(5, 150, 105, 0.35) !important;
+            box-shadow: 0 2px 6px rgba(5, 150, 105, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
         }}
-        .raj_btn_danger button {{
-            background: linear-gradient(135deg, #e11d48, #be123c) !important;
+
+        /* Delete Filter Button */
+        .raj_root_{uid} .raj_btn_danger button {{
+            background: linear-gradient(180deg, #e11d48 0%, #be123c 100%) !important;
             color: #ffffff !important;
             border: 1px solid #fb7185 !important;
             border-radius: 6px !important;
             padding: 0 4px !important;
             height: 24px !important;
-            min-width: 26px !important;
+            min-height: 24px !important;
+            min-width: 24px !important;
         }}
-        .raj_btn_load_more button {{
-            background: linear-gradient(135deg, #0369a1, #0284c7) !important;
+
+        /* Load More Pagination Button */
+        .raj_root_{uid} .raj_btn_load_more button {{
+            background: linear-gradient(180deg, #0369a1 0%, #0284c7 100%) !important;
             color: #ffffff !important;
             border: 1px solid #38bdf8 !important;
-            box-shadow: 0 2px 6px rgba(2, 132, 199, 0.4) !important;
+            box-shadow: 0 2px 6px rgba(2, 132, 199, 0.45) !important;
             font-weight: 700 !important;
             font-size: 11px !important;
             border-radius: 8px !important;
             height: 28px !important;
             padding: 0 16px !important;
-        }}
-        .raj_btn_load_more button:hover {{
-            background: linear-gradient(135deg, #0284c7, #38bdf8) !important;
-            transform: translateY(-1px) !important;
         }}
 
         /* Compact Card-Like Column Selection Pills */
@@ -254,7 +295,7 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
             border-radius: 5px !important;
             padding: 0 5px !important;
             margin: 1px 2px !important;
-            height: 20px !important;
+            height: 22px !important;
             display: inline-flex !important;
             align-items: center !important;
             transition: all 0.15s ease !important;
@@ -408,41 +449,41 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
     pending_cols = set()
     current_limit = preview_rows  # Default 500
 
-    # Toolbar Controls
+    # Toolbar Controls (Expanded Height for Full Text Visibility)
     df_dropdown = widgets.Dropdown(
         options=list(dfs_dict.keys()) if dfs_dict else ["No DataFrame Found"],
         value=current_df_name,
         description='DF:',
         style={'description_width': '25px'},
-        layout=widgets.Layout(width='190px')
+        layout=widgets.Layout(width='200px', height='30px')
     )
     
     shape_label = widgets.HTML(
-        value=f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape'] if current_df_name else '0 rows'}</span>"
+        value=f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape'] if current_df_name else '0 rows'}</span>"
     )
 
     # Column Controls (70% Panel)
-    col_search_input = widgets.Text(placeholder="🔍 Search...", layout=widgets.Layout(width='120px'))
+    col_search_input = widgets.Text(placeholder="🔍 Search...", layout=widgets.Layout(width='120px', height='28px'))
     
-    btn_select_all_cols = widgets.Button(description="All", layout=widgets.Layout(width='50px'))
+    btn_select_all_cols = widgets.Button(description="All", layout=widgets.Layout(width='50px', height='28px'))
     btn_select_all_cols.add_class("raj_btn_secondary")
     
-    btn_clear_all_cols = widgets.Button(description="Clear", layout=widgets.Layout(width='55px'))
+    btn_clear_all_cols = widgets.Button(description="Clear", layout=widgets.Layout(width='55px', height='28px'))
     btn_clear_all_cols.add_class("raj_btn_secondary")
     
-    btn_apply_cols = widgets.Button(description="✓ Apply", layout=widgets.Layout(width='80px'))
+    btn_apply_cols = widgets.Button(description="✓ Apply", layout=widgets.Layout(width='80px', height='28px'))
     btn_apply_cols.add_class("raj_btn_apply")
 
     col_checklist_box = widgets.HBox([], layout=widgets.Layout(flex_flow='row wrap', max_height='68px', overflow='auto', padding='2px', background_color='#0f172a', margin='0'))
 
     # Filter Controls (30% Panel)
-    btn_add_filter = widgets.Button(description="+ Filter", layout=widgets.Layout(width='70px'))
+    btn_add_filter = widgets.Button(description="+ Filter", layout=widgets.Layout(width='75px', height='28px'))
     btn_add_filter.add_class("raj_btn_add_filter")
 
-    btn_run_filter = widgets.Button(description="⚡ Run", layout=widgets.Layout(width='65px'))
+    btn_run_filter = widgets.Button(description="⚡ Run", layout=widgets.Layout(width='70px', height='28px'))
     btn_run_filter.add_class("raj_btn_run_filter")
 
-    btn_reset_filters = widgets.Button(description="↺ Reset", layout=widgets.Layout(width='65px'))
+    btn_reset_filters = widgets.Button(description="↺ Reset", layout=widgets.Layout(width='70px', height='28px'))
     btn_reset_filters.add_class("raj_btn_secondary")
 
     status_code_box = widgets.HTML(value="")
@@ -503,7 +544,7 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
         if not col_names:
             return
         
-        col_dd = widgets.Dropdown(options=col_names, layout=widgets.Layout(flex='1 1 32%', min_width='75px', max_width='115px'))
+        col_dd = widgets.Dropdown(options=col_names, layout=widgets.Layout(flex='1 1 32%', min_width='75px', max_width='115px', height='28px'))
         op_dd = widgets.Dropdown(
             options=[
                 ('contains', 'contains'),
@@ -519,8 +560,8 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
                 ('is null', 'is_null')
             ],
             value='contains',
-            layout=widgets.Layout(flex='1 1 30%', min_width='70px', max_width='95px'))
-        val_txt = widgets.Text(placeholder="Val...", layout=widgets.Layout(flex='1 1 30%', min_width='65px', max_width='95px'))
+            layout=widgets.Layout(flex='1 1 30%', min_width='70px', max_width='95px', height='28px'))
+        val_txt = widgets.Text(placeholder="Val...", layout=widgets.Layout(flex='1 1 30%', min_width='65px', max_width='95px', height='28px'))
         btn_del = widgets.Button(description="✕", layout=widgets.Layout(width='24px', height='24px'))
         btn_del.add_class("raj_btn_danger")
 
@@ -627,9 +668,7 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
                         combined_expr = combined_expr & expr
                     lf_plan = lf_plan.filter(combined_expr)
                 
-                # Count matching rows lazily
                 matched_count = lf_plan.select(pl.len()).collect().item()
-                # Projection and limit pushed down directly to Parquet scanner
                 slice_df = lf_plan.select(cols_to_show).limit(current_limit).collect()
             else:
                 df_data = obj
@@ -845,7 +884,7 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
         current_limit = preview_rows  # Reset to default 500
         if current_df_name and current_df_name in dfs_dict:
             all_cols = dfs_metadata[current_df_name]["col_names"]
-            shape_label.value = f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape']}</span>"
+            shape_label.value = f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape']}</span>"
             pending_cols.clear()
             pending_cols.update(all_cols[:8])
             applied_columns.clear()
@@ -914,23 +953,23 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
     # --- 70% / 30% SIDE-BY-SIDE CONTROLS LAYOUT ---
     col_section_box = widgets.VBox([
         widgets.HBox([
-            widgets.HTML("<span style='font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;'>Columns:</span>"),
+            widgets.HTML("<span style='font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase; line-height:28px;'>Columns:</span>"),
             col_search_input,
             btn_select_all_cols,
             btn_clear_all_cols,
             btn_apply_cols
-        ], layout=widgets.Layout(align_items='center', gap='3px', margin='0 0 3px 0', width='100%')),
+        ], layout=widgets.Layout(align_items='center', gap='4px', margin='0 0 4px 0', width='100%')),
         col_checklist_box
     ], layout=widgets.Layout(flex='7 7 70%', min_width='300px', padding='6px 8px', margin='0'))
     col_section_box.add_class("panel_card")
 
     filter_section_box = widgets.VBox([
         widgets.HBox([
-            widgets.HTML("<span style='font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase;'>Filters:</span>"),
+            widgets.HTML("<span style='font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase; line-height:28px;'>Filters:</span>"),
             btn_add_filter,
             btn_run_filter,
             btn_reset_filters
-        ], layout=widgets.Layout(align_items='center', gap='3px', margin='0 0 3px 0', width='100%')),
+        ], layout=widgets.Layout(align_items='center', gap='4px', margin='0 0 4px 0', width='100%')),
         filter_rows_container
     ], layout=widgets.Layout(flex='3 3 30%', min_width='220px', padding='6px 8px', margin='0'))
     filter_section_box.add_class("panel_card")
@@ -940,12 +979,12 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
         filter_section_box
     ], layout=widgets.Layout(width='100%', gap='6px', margin='0 0 6px 0', align_items='stretch'))
 
-    # Integrated DF Header Bar
+    # Integrated DF Header Bar (Ensures No Vertical Text Clipping)
     df_embedded_bar = widgets.HBox([
-        widgets.HTML("<span style='font-size:11px; font-weight:700; color:#cbd5e1; margin-right:4px;'>📊 ACTIVE DATAFRAME:</span>"),
+        widgets.HTML("<span style='font-size:11px; font-weight:700; color:#cbd5e1; margin-right:6px; line-height:30px;'>📊 ACTIVE DATAFRAME:</span>"),
         df_dropdown,
         shape_label
-    ], layout=widgets.Layout(align_items='center', margin='0 0 6px 0', padding='4px 8px', border_bottom='1px solid #334155', width='100%'))
+    ], layout=widgets.Layout(align_items='center', margin='0 0 6px 0', padding='4px 8px', border_bottom='1px solid #334155', width='100%', min_height='38px'))
     df_embedded_bar.add_class("panel_card")
 
     quick_preview_controls_box = widgets.VBox([
@@ -1037,12 +1076,12 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
             <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px;">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">DataFrame:</span>
-                    <select id="{uid}_inspectorDfSelector" style="background: #0f172a; color: #38bdf8; font-family: monospace; font-size: 12px; border: 1px solid #475569; border-radius: 6px; padding: 3px 8px; outline: none; cursor: pointer;"></select>
-                    <span id="{uid}_inspectorShapeBadge" style="font-size: 11px; font-family: monospace; background: #0f172a; color: #38bdf8; padding: 3px 8px; border-radius: 6px; font-weight: 600; border: 1px solid #334155;">0 rows</span>
+                    <select id="{uid}_inspectorDfSelector" style="background: #0f172a; color: #38bdf8; font-family: monospace; font-size: 12px; border: 1px solid #475569; border-radius: 6px; padding: 4px 8px; outline: none; cursor: pointer; height: 30px;"></select>
+                    <span id="{uid}_inspectorShapeBadge" style="font-size: 11px; font-family: monospace; background: #0f172a; color: #38bdf8; padding: 4px 10px; border-radius: 6px; font-weight: 600; border: 1px solid #334155;">0 rows</span>
                 </div>
                 <div>
                     <input type="text" id="{uid}_inspectorSearchInput" placeholder="Filter column or type..." 
-                           style="background: #0f172a; color: white; font-size: 11px; border: 1px solid #475569; border-radius: 6px; padding: 3px 8px; outline: none; width: 190px;">
+                           style="background: #0f172a; color: white; font-size: 11px; border: 1px solid #475569; border-radius: 6px; padding: 4px 8px; outline: none; width: 190px; height: 28px;">
                 </div>
             </div>
 
@@ -1319,7 +1358,6 @@ with pl.Config(tbl_rows=100, tbl_cols=50, fmt_str_lengths=100):
     first_df_name = list(dfs_dict.keys())[0] if dfs_dict else ""
     df_shape_info = f"{dfs_metadata[first_df_name]['shape']}" if first_df_name else "0 rows"
 
-    # HTML host div for the Quick Preview section
     preview_host_div = widgets.HTML(f"<div id='{uid}_preview_host' style='display:block; width:100%;'></div>")
 
     # The Master Container widget
