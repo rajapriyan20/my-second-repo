@@ -6,21 +6,20 @@ import ipywidgets as widgets
 import polars as pl
 from IPython.display import HTML, display
 
-TOOLKIT_VERSION = "v3.5"
+TOOLKIT_VERSION = "v3.6"
 
 def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filename: str = "polars_jupyter_helper.html"):
     """
-    Rajapriyan Coding Toolkit (v3.5):
-    - True Adaptive Column Width: min(150px, content_fit_width) with '...' truncation
+    Rajapriyan Coding Toolkit (v3.6):
+    - Full Support for pl.DataFrame & pl.LazyFrame (scan_parquet, scan_csv, scan_ipc)
+    - Lazy Projection & Predicate Pushdown: Only scans selected columns & filtered rows
     - 70% / 30% Split: Column Selection (70%) and Parallel Filters (30%)
+    - Adaptive Column Width: min(150px, content_fit_width) with '...' truncation
     - Default 500 Records with 'Load +500 More' Pagination Button
-    - 100% Solid Dark Theme: Completely eliminates white gaps & canvas bleed
-    - Integrated Header Bar: Active DataFrame selection & shape badge in top header line
-    - Full-Dataset Polars Query Engine (handles millions of rows in ms)
+    - 100% Solid Dark Slate Theme: Completely eliminates white gaps & canvas bleed
     - Mouse-Draggable Column Resizing + 3-State Sorting (Asc/Desc/Orig)
-    - Tactile Rounded Gradient Buttons & Compact Launcher Pill
     """
-    # 1. Discover Polars DataFrames in active Jupyter interactive session
+    # 1. Discover Polars DataFrames and LazyFrames in active session
     try:
         from IPython import get_ipython
         ip = get_ipython()
@@ -30,24 +29,43 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
 
     dfs_dict = {
         name: obj for name, obj in user_ns.items()
-        if isinstance(obj, pl.DataFrame) and not name.startswith('_')
+        if isinstance(obj, (pl.DataFrame, pl.LazyFrame)) and not name.startswith('_')
     }
 
     uid = f"pl_{uuid.uuid4().hex[:8]}"
 
-    # Extract metadata for Inspector & Reference Cards
+    # Extract metadata for Inspector & Reference Cards without loading full LazyFrames
     dfs_metadata = {}
     for var_name, obj in dfs_dict.items():
+        is_lazy = isinstance(obj, pl.LazyFrame)
+        
+        # Extract column schema
+        try:
+            schema = obj.collect_schema() if hasattr(obj, 'collect_schema') else obj.schema
+            col_names = list(schema.names()) if hasattr(schema, 'names') else list(schema.keys())
+            col_types = {name: str(dtype) for name, dtype in (schema.items() if hasattr(schema, 'items') else zip(col_names, schema.values()))}
+        except Exception:
+            col_names = list(obj.columns)
+            col_types = {c: "Unknown" for c in col_names}
+
+        # Safely pull a small 10-row sample for metadata inspection
+        try:
+            sample_df = obj.limit(10).collect() if is_lazy else obj.head(10)
+        except Exception:
+            sample_df = None
+
         cols_info = []
-        for col in obj.columns:
-            dtype = str(obj[col].dtype)
-            try:
-                non_nulls = obj[col].drop_nulls()
-                s1 = str(non_nulls[0]) if len(non_nulls) > 0 else "None"
-                s2 = str(non_nulls[1]) if len(non_nulls) > 1 else "None"
-                s3 = str(non_nulls[2]) if len(non_nulls) > 2 else "None"
-            except Exception:
-                s1, s2, s3 = "None", "None", "None"
+        for col in col_names:
+            dtype_str = col_types.get(col, "Unknown")
+            s1, s2, s3 = "None", "None", "None"
+            if sample_df is not None and col in sample_df.columns:
+                try:
+                    non_nulls = sample_df[col].drop_nulls()
+                    s1 = str(non_nulls[0]) if len(non_nulls) > 0 else "None"
+                    s2 = str(non_nulls[1]) if len(non_nulls) > 1 else "None"
+                    s3 = str(non_nulls[2]) if len(non_nulls) > 2 else "None"
+                except Exception:
+                    pass
             
             s1 = (s1[:35] + '...') if len(s1) > 35 else s1
             s2 = (s2[:35] + '...') if len(s2) > 35 else s2
@@ -55,16 +73,28 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
             
             cols_info.append({
                 "col": str(col),
-                "dtype": dtype,
+                "dtype": dtype_str,
                 "sample1": s1,
                 "sample2": s2,
                 "sample3": s3
             })
-        
+
+        # Determine shape without full table scan
+        if is_lazy:
+            try:
+                total_rows = obj.select(pl.len()).collect().item()
+                shape_str = f"{total_rows:,} rows × {len(col_names):,} cols (Lazy)"
+            except Exception:
+                shape_str = f"Lazy × {len(col_names):,} cols"
+        else:
+            shape_str = f"{obj.shape[0]:,} rows × {obj.shape[1]:,} cols"
+
         dfs_metadata[var_name] = {
-            "shape": f"{obj.shape[0]:,} rows × {obj.shape[1]:,} cols",
+            "shape": shape_str,
             "columns": cols_info,
-            "col_names": [str(c) for c in obj.columns]
+            "col_names": col_names,
+            "col_types": col_types,
+            "is_lazy": is_lazy
         }
 
     metadata_json = json.dumps(dfs_metadata)
@@ -72,7 +102,6 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
     # 2. Master CSS Styles (Total Dark Theme Override with Zero White Bleed)
     css_styles = f"""
     <style>
-        /* Force Root Dark Container & Kill Jupyter Output Area Light Theme Bleed */
         .raj_root_{uid},
         .raj_root_{uid} * {{
             box-sizing: border-box !important;
@@ -90,7 +119,7 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
             width: 100% !important;
         }}
 
-        /* Wipe out all Jupyter light-theme default widget margins & white backgrounds */
+        /* Wipe out all Jupyter default light-theme widget backgrounds */
         .raj_root_{uid} .jupyter-widgets,
         .raj_root_{uid} .widget-box,
         .raj_root_{uid} .widget-vbox,
@@ -109,7 +138,6 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
             color: #f8fafc !important;
         }}
 
-        /* Dark Card Panels & Wells */
         .raj_root_{uid} .panel_card {{
             background-color: #1e293b !important;
             background: #1e293b !important;
@@ -423,23 +451,30 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
     btn_load_more.add_class("raj_btn_load_more")
     load_more_box = widgets.HBox([btn_load_more], layout=widgets.Layout(justify_content='center', margin='6px 0 0 0', width='100%'))
 
+    def get_current_col_names():
+        if not current_df_name or current_df_name not in dfs_metadata:
+            return []
+        return dfs_metadata[current_df_name]["col_names"]
+
     def update_col_checkboxes():
-        if not current_df_name or current_df_name not in dfs_dict:
+        col_names = get_current_col_names()
+        if not col_names:
             col_checklist_box.children = []
             return
         
-        df_obj = dfs_dict[current_df_name]
         query = col_search_input.value.strip().lower()
+        col_types = dfs_metadata[current_df_name]["col_types"]
         
         checkbox_widgets = []
-        for col in df_obj.columns:
+        for col in col_names:
             if query and query not in col.lower():
                 continue
             
             is_checked = (col in pending_cols)
+            dtype_label = col_types.get(col, "")
             chk = widgets.Checkbox(
                 value=is_checked,
-                description=f"{col} ({df_obj[col].dtype})",
+                description=f"{col} ({dtype_label})",
                 indent=False,
                 layout=widgets.Layout(width='auto', margin='1px 2px')
             )
@@ -463,11 +498,11 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
         col_checklist_box.children = checkbox_widgets
 
     def create_filter_row():
-        if not current_df_name or current_df_name not in dfs_dict:
+        col_names = get_current_col_names()
+        if not col_names:
             return
-        df_obj = dfs_dict[current_df_name]
         
-        col_dd = widgets.Dropdown(options=df_obj.columns, layout=widgets.Layout(flex='1 1 32%', min_width='75px', max_width='115px'))
+        col_dd = widgets.Dropdown(options=col_names, layout=widgets.Layout(flex='1 1 32%', min_width='75px', max_width='115px'))
         op_dd = widgets.Dropdown(
             options=[
                 ('contains', 'contains'),
@@ -515,7 +550,10 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
             load_more_box.layout.display = 'none'
             return
 
-        df_obj = dfs_dict[current_df_name]
+        obj = dfs_dict[current_df_name]
+        is_lazy = isinstance(obj, pl.LazyFrame)
+        col_types = dfs_metadata[current_df_name]["col_types"]
+        all_col_names = dfs_metadata[current_df_name]["col_names"]
         t0 = time.time()
 
         # Build Polars expression dynamically
@@ -526,7 +564,7 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
             col = f["col_dd"].value
             op = f["op_dd"].value
             val = f["val_txt"].value.strip()
-            dtype_str = str(df_obj[col].dtype)
+            dtype_str = col_types.get(col, "")
 
             if op == "is_not_null":
                 filter_exprs.append(pl.col(col).is_not_null())
@@ -571,33 +609,46 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
                         filter_exprs.append(pl.col(col).cast(pl.Utf8) > val)
                         code_snippets.append(f'pl.col("{col}").cast(pl.Utf8) {op} "{val}"')
 
-        # Execute Polars Filter across memory
+        # Selected columns projection
+        cols_to_show = [c for c in all_col_names if c in applied_columns]
+        if not cols_to_show:
+            cols_to_show = all_col_names[:8]
+            applied_columns.clear()
+            applied_columns.update(cols_to_show)
+
+        # Execute Pushdown Query: Works with both LazyFrame and DataFrame
         try:
-            if filter_exprs:
-                combined_expr = filter_exprs[0]
-                for expr in filter_exprs[1:]:
-                    combined_expr = combined_expr & expr
-                filtered_df = df_obj.filter(combined_expr)
+            if is_lazy:
+                lf_plan = obj
+                if filter_exprs:
+                    combined_expr = filter_exprs[0]
+                    for expr in filter_exprs[1:]:
+                        combined_expr = combined_expr & expr
+                    lf_plan = lf_plan.filter(combined_expr)
+                
+                # Count matching rows lazily
+                matched_count = lf_plan.select(pl.len()).collect().item()
+                # Projection and limit pushed down directly to Parquet scanner
+                slice_df = lf_plan.select(cols_to_show).limit(current_limit).collect()
             else:
-                filtered_df = df_obj
+                df_data = obj
+                if filter_exprs:
+                    combined_expr = filter_exprs[0]
+                    for expr in filter_exprs[1:]:
+                        combined_expr = combined_expr & expr
+                    filtered_df = df_data.filter(combined_expr)
+                else:
+                    filtered_df = df_data
+                matched_count = filtered_df.shape[0]
+                slice_df = filtered_df.select(cols_to_show).head(current_limit)
         except Exception as err:
             with preview_output:
                 preview_output.clear_output()
-                display(HTML(f"<div style='padding:12px; color:#f87171;'>Polars Filter Error: {html.escape(str(err))}</div>"))
+                display(HTML(f"<div style='padding:12px; color:#f87171;'>Polars Query Error: {html.escape(str(err))}</div>"))
             load_more_box.layout.display = 'none'
             return
 
         elapsed_ms = (time.time() - t0) * 1000
-        matched_count = filtered_df.shape[0]
-
-        # Apply Column Visibility
-        cols_to_show = [c for c in df_obj.columns if c in applied_columns]
-        if not cols_to_show:
-            cols_to_show = df_obj.columns[:8]
-            applied_columns.clear()
-            applied_columns.update(cols_to_show)
-
-        slice_df = filtered_df.select(cols_to_show).head(current_limit)
         visible_rows_count = slice_df.shape[0]
 
         # --- TRUE ADAPTIVE WIDTH CALCULATION: min(150, content_fit_width) ---
@@ -606,25 +657,27 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
         col_widths = {}
 
         for col in cols_to_show:
-            header_char_len = len(str(col)) + 2  # Space for sort icon & spacing
+            header_char_len = len(str(col)) + 2
             max_val_len = 0
             for v in slice_df[col].head(100):
                 if v is not None:
                     max_val_len = max(max_val_len, len(str(v)))
             
             char_count = max(header_char_len, max_val_len)
-            # Monospace character is ~7.2px wide + 16px cell padding
             content_fit_width = int(char_count * 7.4) + 18
-            # Exact formula: min(150px, content_fit_width)
             col_widths[col] = min(MAX_PREDEFINED_CAP, max(MIN_FLOOR_WIDTH, content_fit_width))
 
         # Status & Generated Code Info Box
-        code_str = f'{current_df_name}.filter({" & ".join(code_snippets)})' if code_snippets else f'{current_df_name}.head({visible_rows_count})'
+        if is_lazy:
+            code_str = f'{current_df_name}.filter({" & ".join(code_snippets)}).select({cols_to_show}).limit({visible_rows_count}).collect()' if code_snippets else f'{current_df_name}.select({cols_to_show}).limit({visible_rows_count}).collect()'
+        else:
+            code_str = f'{current_df_name}.filter({" & ".join(code_snippets)})' if code_snippets else f'{current_df_name}.head({visible_rows_count})'
+        
         status_html = f"""
         <div style="background:#0f172a; border:1px solid #334155; border-radius:6px; padding:5px 10px; margin:0 0 6px 0; display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:11px;">
             <div style="display:flex; align-items:center; gap:8px; white-space:nowrap;">
-                <span style="color:#34d399; font-weight:600;">⚡ {matched_count:,} / {df_obj.shape[0]:,} rows <span style="color:#94a3b8; font-weight:normal;">({elapsed_ms:.1f} ms)</span></span>
-                <span style="color:#38bdf8; font-family:monospace;">(Showing {visible_rows_count:,} of {matched_count:,} rows × {len(cols_to_show)} cols)</span>
+                <span style="color:#34d399; font-weight:600;">⚡ {matched_count:,} matching rows <span style="color:#94a3b8; font-weight:normal;">({elapsed_ms:.1f} ms)</span></span>
+                <span style="color:#38bdf8; font-family:monospace;">(Showing {visible_rows_count:,} rows × {len(cols_to_show)} cols)</span>
             </div>
             <div style="font-family:monospace; font-size:10px; color:#94a3b8; background:#1e293b; padding:2px 8px; border-radius:4px; overflow-x:auto; flex:1; text-align:right;">
                 <span style="color:#38bdf8;">Code:</span> {html.escape(code_str)}
@@ -633,7 +686,7 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
         """
         status_code_box.value = status_html
 
-        # Table Geometry with True Adaptive Widths (NOT Stretched by min-width: 100%)
+        # Table Geometry with Adaptive Widths, 3-State Sort & Draggable Resizing
         table_id = f"{uid}_res_table_el"
         th_cells = f'<th style="width:40px; min-width:40px; max-width:40px; text-align:center; position:relative; cursor:default;" data-no-sort="true">#</th>'
         for col in cols_to_show:
@@ -652,7 +705,7 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
             tbody_rows += f'<tr class="{row_class}" data-orig-idx="{r_idx}">{td_cells}</tr>'
 
         if matched_count == 0:
-            tbody_rows = "<tr><td colspan='100' style='padding:18px; text-align:center; color:#94a3b8;'>No rows matched the filter criteria across the DataFrame.</td></tr>"
+            tbody_rows = "<tr><td colspan='100' style='padding:18px; text-align:center; color:#94a3b8;'>No rows matched the filter criteria.</td></tr>"
 
         table_html = f"""
         <div style="max-height:560px; overflow:auto; border:1px solid #334155; border-radius:6px; background-color:#0f172a;">
@@ -769,7 +822,7 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
             preview_output.clear_output()
             display(HTML(table_html))
 
-        # Update Pagination "Load More" Button Visibility & Description
+        # Update Pagination "Load More" Button
         if matched_count > visible_rows_count:
             btn_load_more.description = f"⬇ Load +500 More Records (Showing {visible_rows_count:,} of {matched_count:,})"
             load_more_box.layout.display = 'flex'
@@ -790,10 +843,10 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
         current_df_name = change['new']
         current_limit = preview_rows  # Reset to default 500
         if current_df_name and current_df_name in dfs_dict:
-            df_obj = dfs_dict[current_df_name]
+            all_cols = dfs_metadata[current_df_name]["col_names"]
             shape_label.value = f"<span style='font-family:monospace; background:#0f172a; color:#38bdf8; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:600; border:1px solid #334155;'>{dfs_metadata[current_df_name]['shape']}</span>"
             pending_cols.clear()
-            pending_cols.update(df_obj.columns[:8])
+            pending_cols.update(all_cols[:8])
             applied_columns.clear()
             applied_columns.update(pending_cols)
             active_filters.clear()
@@ -808,18 +861,20 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
     col_search_input.observe(on_col_search, names='value')
 
     def on_select_all_cols(b):
-        if current_df_name and current_df_name in dfs_dict:
+        all_cols = get_current_col_names()
+        if all_cols:
             q = col_search_input.value.strip().lower()
-            for c in dfs_dict[current_df_name].columns:
+            for c in all_cols:
                 if not q or q in c.lower():
                     pending_cols.add(c)
             update_col_checkboxes()
     btn_select_all_cols.on_click(on_select_all_cols)
 
     def on_clear_all_cols(b):
-        if current_df_name and current_df_name in dfs_dict:
+        all_cols = get_current_col_names()
+        if all_cols:
             q = col_search_input.value.strip().lower()
-            for c in dfs_dict[current_df_name].columns:
+            for c in all_cols:
                 if not q or q in c.lower():
                     pending_cols.discard(c)
             update_col_checkboxes()
@@ -837,7 +892,7 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
 
     def on_run_filter_click(b):
         nonlocal current_limit
-        current_limit = preview_rows  # Reset pagination on new filter run
+        current_limit = preview_rows
         render_polars_table()
     btn_run_filter.on_click(on_run_filter_click)
 
@@ -851,7 +906,7 @@ def launch_polars_helper(preview_rows: int = 500, save_html: bool = True, filena
 
     # Initialize Column Selection State
     if current_df_name and current_df_name in dfs_dict:
-        pending_cols.update(dfs_dict[current_df_name].columns[:8])
+        pending_cols.update(dfs_metadata[current_df_name]["col_names"][:8])
         applied_columns.update(pending_cols)
         update_col_checkboxes()
 
@@ -1028,7 +1083,7 @@ df.filter(
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                     <span style="font-size: 11px; font-weight: 700; color: #38bdf8; text-transform: uppercase;">2. Dynamic Lists & String Regex</span>
                     <button type="button" class="{uid}_copy_btn" title="Copy code" style="background: #334155; border: 1px solid #475569; border-radius: 5px; padding: 2px 6px; cursor: pointer; color: #94a3b8; display: inline-flex; align-items: center;">
-                        <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                     </button>
                 </div>
                 <pre style="background: #0f172a; color: #e2e8f0; padding: 8px; border-radius: 6px; font-size: 11px; margin: 0; overflow-x: auto; border: 1px solid #334155;"><code>target_regions = ["North", "APAC", "West"]
