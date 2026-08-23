@@ -1,0 +1,160 @@
+import itertools
+from typing import Any, Dict, List, Tuple, Union
+import polars as pl
+
+
+def analyze_duplicates_and_keys(
+    data: Union[pl.DataFrame, pl.LazyFrame],
+    top_n: int = 3,
+    max_composite_size: int = 3,
+) -> Dict[str, Any]:
+    """Analyzes row-level duplicate statistics and identifies top candidate
+
+    primary and composite keys.
+
+    Parameters
+    ----------
+    data : pl.DataFrame | pl.LazyFrame
+        Input Polars DataFrame or LazyFrame.
+    top_n : int, default 3
+        Number of top candidate keys to return.
+    max_composite_size : int, default 3
+        Maximum number of columns to evaluate for composite keys.
+
+    Returns
+    -------
+    dict
+        Contains duplicate stats, duplicate samples (DataFrame), top primary keys,
+        and top composite keys.
+    """
+    # 1. Standardize to DataFrame
+    df = data.collect() if isinstance(data, pl.LazyFrame) else data
+
+    total_rows = df.height
+    if total_rows == 0:
+        return {
+            "stats": {"total_rows": 0, "duplicate_rows": 0, "duplicate_pct": 0.0},
+            "duplicate_samples": df,
+            "top_primary_keys": [],
+            "top_composite_keys": [],
+        }
+
+    # 2. Row-level Duplicate Stats & Samples
+    # A complete duplicate occurs when all column values match another row
+    all_cols = df.columns
+    duplicate_mask = df.select(pl.struct(all_cols).is_duplicated()).to_series()
+
+    duplicate_rows_df = df.filter(duplicate_mask)
+    num_duplicate_rows = duplicate_rows_df.height
+    duplicate_pct = (num_duplicate_rows / total_rows) * 100
+
+    # Deduplicated dataframe for candidate key discovery
+    df_dedup = df.unique()
+    dedup_rows = df_dedup.height
+
+    stats = {
+        "total_rows": total_rows,
+        "distinct_rows": dedup_rows,
+        "duplicate_rows": num_duplicate_rows,
+        "duplicate_percentage": round(duplicate_pct, 2),
+    }
+
+    # 3. Primary Key Candidates (Single Column)
+    # Evaluate uniqueness ratio and null percentage on deduplicated data
+    pk_evaluations: List[Dict[str, Any]] = []
+
+    for col in all_cols:
+        col_expr = pl.col(col)
+        metrics = df_dedup.select(
+            n_unique=col_expr.n_unique(),
+            null_count=col_expr.null_count(),
+        ).to_dicts()[0]
+
+        n_unique = metrics["n_unique"]
+        null_count = metrics["null_count"]
+        uniqueness_ratio = n_unique / dedup_rows
+        is_candidate = (n_unique == dedup_rows) and (null_count == 0)
+
+        pk_evaluations.append(
+            {
+                "column": col,
+                "is_candidate_pk": is_candidate,
+                "uniqueness_ratio": round(uniqueness_ratio, 4),
+                "null_count": null_count,
+                "unique_count": n_unique,
+            }
+        )
+
+    # Sort PKs: prioritize 100% uniqueness without nulls, then highest uniqueness ratio, then fewest nulls
+    pk_evaluations.sort(
+        key=lambda x: (
+            x["is_candidate_pk"],
+            x["uniqueness_ratio"],
+            -x["null_count"],
+        ),
+        reverse=True,
+    )
+    top_pks = pk_evaluations[:top_n]
+
+    # 4. Composite Key Candidates (Combinations of 2 to max_composite_size)
+    # Exclude columns that are already valid 100% unique single-column PKs
+    identified_pks = {x["column"] for x in pk_evaluations if x["is_candidate_pk"]}
+    candidate_cols = [c for c in all_cols if c not in identified_pks]
+
+    composite_evaluations: List[Dict[str, Any]] = []
+    found_keys: List[set] = []
+
+    max_size = min(max_composite_size, len(candidate_cols))
+
+    for k in range(2, max_size + 1):
+        for combo in itertools.combinations(candidate_cols, k):
+            combo_set = set(combo)
+
+            # Skip superkeys (combinations containing a smaller composite key already found)
+            if any(existing_key.issubset(combo_set) for existing_key in found_keys):
+                continue
+
+            # Check distinct row count and null count across combination
+            struct_expr = pl.struct(list(combo))
+            n_unique = df_dedup.select(struct_expr.n_unique()).item()
+
+            # Any row having a null in the key makes it non-ideal
+            null_rows = df_dedup.select(
+                pl.any_horizontal(pl.col(c).is_null() for c in combo).sum()
+            ).item()
+
+            uniqueness_ratio = n_unique / dedup_rows
+            is_composite_key = (n_unique == dedup_rows) and (null_rows == 0)
+
+            if is_composite_key:
+                found_keys.append(combo_set)
+
+            composite_evaluations.append(
+                {
+                    "columns": list(combo),
+                    "is_candidate_key": is_composite_key,
+                    "uniqueness_ratio": round(uniqueness_ratio, 4),
+                    "rows_with_nulls": null_rows,
+                    "unique_count": n_unique,
+                    "size": k,
+                }
+            )
+
+    # Sort composite keys: prioritize valid candidates, smaller size, highest uniqueness, fewest nulls
+    composite_evaluations.sort(
+        key=lambda x: (
+            x["is_candidate_key"],
+            -x["size"],  # Smaller sets prioritized
+            x["uniqueness_ratio"],
+            -x["rows_with_nulls"],
+        ),
+        reverse=True,
+    )
+    top_composite_keys = composite_evaluations[:top_n]
+
+    return {
+        "stats": stats,
+        "duplicate_samples": duplicate_rows_df.head(10),
+        "top_primary_keys": top_pks,
+        "top_composite_keys": top_composite_keys,
+    }
