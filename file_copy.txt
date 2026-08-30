@@ -1,0 +1,390 @@
+import base64
+import gzip
+import hashlib
+import os
+import threading
+import time
+import ggwave
+import ipywidgets as widgets
+from IPython.display import clear_output, display
+import numpy as np
+import sounddevice as sd
+
+# Audio Configuration
+SAMPLE_RATE = 48000
+PROTOCOL = ggwave.PROTOCOL_AUDIBLE_FASTEST  # High-speed multi-frequency acoustic protocol
+CHUNK_SIZE = 120  # Payload bytes per audio frame
+
+# --- Sound Transmission Engine ---
+
+
+def play_payloads(payload_list):
+    """Encodes a list of string payloads into acoustic waves and plays them in sequence."""
+    waveforms = []
+    # Add 0.2s silence as preamble
+    silence = np.zeros(int(SAMPLE_RATE * 0.2), dtype=np.int16)
+    waveforms.append(silence)
+
+    for p in payload_list:
+        waveform = ggwave.encode(p, protocolId=PROTOCOL, volume=50)
+        if waveform:
+            waveforms.append(np.frombuffer(waveform, dtype=np.int16))
+            # 50ms guard interval between frames
+            waveforms.append(np.zeros(int(SAMPLE_RATE * 0.05), dtype=np.int16))
+
+    full_audio = np.concatenate(waveforms)
+    sd.play(full_audio, samplerate=SAMPLE_RATE, blocking=True)
+
+
+def listen_for_payloads(
+    stop_event, callback, status_out, timeout=None, single_match=None
+):
+    """Listens via microphone and decodes ggwave audio packets."""
+    instance = ggwave.init()
+    start_time = time.time()
+
+    def audio_callback(indata, frames, time_info, status):
+        if stop_event.is_set():
+            raise sd.CallbackStop
+        # Convert float32 to int16 PCM
+        pcm_data = (indata[:, 0] * 32767).astype(np.int16).tobytes()
+        res = ggwave.decode(instance, pcm_data)
+        if res:
+            try:
+                text = res.decode("utf-8")
+                callback(text)
+            except Exception:
+                pass
+
+    try:
+        with sd.InputStream(
+            channels=1,
+            samplerate=SAMPLE_RATE,
+            dtype="float32",
+            callback=audio_callback,
+            blocksize=1024,
+        ):
+            while not stop_event.is_set():
+                if timeout and (time.time() - start_time > timeout):
+                    break
+                time.sleep(0.05)
+    except sd.CallbackStop:
+        pass
+    except Exception as e:
+        with status_out:
+            print(f"Audio stream error: {e}")
+
+
+# --- UI & Interaction Setup ---
+
+mode_selector = widgets.ToggleButtons(
+    options=["Sender", "Receiver"],
+    description="Role:",
+    button_style="primary",
+)
+
+out = widgets.Output()
+dynamic_container = widgets.VBox([])
+
+# Global references for active workers
+active_stop_event = None
+active_thread = None
+
+
+def render_ui(mode):
+    global active_stop_event, active_thread
+    if active_stop_event:
+        active_stop_event.set()
+
+    if mode == "Sender":
+        file_input = widgets.Text(
+            value="data.txt",
+            description="File Path:",
+            layout=widgets.Layout(width="450px"),
+        )
+        btn_check = widgets.Button(
+            description="Check Receiver Device",
+            button_style="info",
+            icon="plug",
+        )
+        btn_send = widgets.Button(
+            description="Start Sending",
+            button_style="success",
+            icon="paper-plane",
+        )
+        status_box = widgets.Output()
+
+        def on_check_receiver_clicked(_):
+            status_box.clear_output()
+            with status_box:
+                print("🔊 Sending Handshake Ping [PING_CHECK]...")
+
+            def worker():
+                stop_evt = threading.Event()
+                ack_received = threading.Event()
+
+                def on_ack(msg):
+                    if msg == "PONG_ACK":
+                        ack_received.set()
+                        stop_evt.set()
+
+                # Start listener thread for ack
+                t_listen = threading.Thread(
+                    target=listen_for_payloads,
+                    args=(stop_evt, on_ack, status_box, 8.0),
+                )
+                t_listen.start()
+
+                # Play ping
+                play_payloads(["PING_CHECK"])
+
+                # Wait for response
+                t_listen.join()
+                with status_box:
+                    if ack_received.is_set():
+                        print(
+                            "✅ Handshake Verified! Receiver responded with ACK."
+                        )
+                    else:
+                        print("❌ No ACK received. Check volume / distance.")
+
+            threading.Thread(target=worker).start()
+
+        def on_send_clicked(_):
+            status_box.clear_output()
+            path = file_input.value.strip()
+
+            if not os.path.exists(path):
+                with status_box:
+                    print(f"❌ Error: File '{path}' not found.")
+                return
+
+            with open(path, "rb") as f:
+                raw_bytes = f.read()
+
+            file_hash = hashlib.sha256(raw_bytes).hexdigest()
+            compressed = gzip.compress(raw_bytes)
+            b64_data = base64.b64encode(compressed).decode("ascii")
+
+            # Slice into chunks
+            chunks = [
+                b64_data[i : i + CHUNK_SIZE]
+                for i in range(0, len(b64_data), CHUNK_SIZE)
+            ]
+            total_chunks = len(chunks)
+
+            with status_box:
+                print(f"📦 File: {os.path.basename(path)}")
+                print(f"📊 Original Size: {len(raw_bytes):,} bytes")
+                print(
+                    f"🗜️ Compressed Size: {len(compressed):,} bytes ({total_chunks} audio frames)"
+                )
+                print(f"🔑 SHA-256 Hash: {file_hash}")
+                print("\n🚀 Transmitting sound... Please keep room quiet.")
+
+            def worker():
+                payloads = [f"START:{total_chunks}:{file_hash}"]
+                for idx, c in enumerate(chunks):
+                    payloads.append(f"D:{idx}:{c}")
+                payloads.append("END")
+
+                t0 = time.time()
+                play_payloads(payloads)
+                elapsed = time.time() - t0
+
+                with status_box:
+                    print(
+                        f"\n✨ Transmission complete in {elapsed:.2f} seconds!"
+                    )
+
+            threading.Thread(target=worker).start()
+
+        btn_check.on_click(on_check_receiver_clicked)
+        btn_send.on_click(on_send_clicked)
+
+        dynamic_container.children = [
+            file_input,
+            widgets.HBox([btn_check, btn_send]),
+            status_box,
+        ]
+
+    else:  # Receiver Mode
+        save_input = widgets.Text(
+            value="received_file.txt",
+            description="Save As:",
+            layout=widgets.Layout(width="450px"),
+        )
+        btn_check = widgets.Button(
+            description="Check Sender Device",
+            button_style="info",
+            icon="plug",
+        )
+        btn_receive = widgets.Button(
+            description="Start Receiving",
+            button_style="success",
+            icon="headphones",
+        )
+        btn_stop = widgets.Button(
+            description="Stop", button_style="danger", icon="stop"
+        )
+        status_box = widgets.Output()
+
+        rx_state = {
+            "stop_evt": None,
+            "total_chunks": 0,
+            "expected_hash": "",
+            "chunks": {},
+            "active": False,
+        }
+
+        def on_check_sender_clicked(_):
+            status_box.clear_output()
+            with status_box:
+                print("👂 Listening for Sender Ping (10s timeout)...")
+
+            def worker():
+                stop_evt = threading.Event()
+                ping_detected = threading.Event()
+
+                def on_ping(msg):
+                    if msg == "PING_CHECK":
+                        ping_detected.set()
+                        stop_evt.set()
+
+                t_listen = threading.Thread(
+                    target=listen_for_payloads,
+                    args=(stop_evt, on_ping, status_box, 10.0),
+                )
+                t_listen.start()
+                t_listen.join()
+
+                if ping_detected.is_set():
+                    with status_box:
+                        print("📡 Ping detected! Sending ACK sound back...")
+                    play_payloads(["PONG_ACK"])
+                    with status_box:
+                        print("✅ ACK sent to Sender.")
+                else:
+                    with status_box:
+                        print("❌ No Ping heard within 10s.")
+
+            threading.Thread(target=worker).start()
+
+        def on_receive_clicked(_):
+            status_box.clear_output()
+            rx_state["stop_evt"] = threading.Event()
+            rx_state["total_chunks"] = 0
+            rx_state["expected_hash"] = ""
+            rx_state["chunks"] = {}
+            rx_state["active"] = True
+
+            with status_box:
+                print(
+                    "🎧 Listening for file transmission on microphone... (Press Stop to cancel)"
+                )
+
+            def on_frame(msg):
+                if msg.startswith("START:"):
+                    _, count, h = msg.split(":")
+                    rx_state["total_chunks"] = int(count)
+                    rx_state["expected_hash"] = h
+                    with status_box:
+                        print(
+                            f"⚡ Transmission incoming! Total frames: {count}"
+                        )
+                elif msg.startswith("D:"):
+                    parts = msg.split(":")
+                    idx = int(parts[1])
+                    chunk_data = parts[2]
+                    rx_state["chunks"][idx] = chunk_data
+                    with status_box:
+                        print(
+                            f"📥 Received frame {idx + 1}/{rx_state['total_chunks']}",
+                            end="\r",
+                        )
+                elif (
+                    msg == "END"
+                    or len(rx_state["chunks"])
+                    == rx_state["total_chunks"]
+                    > 0
+                ):
+                    rx_state["stop_evt"].set()
+                    # Reconstruct
+                    if (
+                        len(rx_state["chunks"])
+                        == rx_state["total_chunks"]
+                        > 0
+                    ):
+                        try:
+                            sorted_b64 = "".join(
+                                [
+                                    rx_state["chunks"][i]
+                                    for i in range(rx_state["total_chunks"])
+                                ]
+                            )
+                            comp_data = base64.b64decode(sorted_b64)
+                            decomp_bytes = gzip.decompress(comp_data)
+                            calc_hash = hashlib.sha256(decomp_bytes).hexdigest()
+
+                            save_path = save_input.value.strip()
+                            with open(save_path, "wb") as f:
+                                f.write(decomp_bytes)
+
+                            with status_box:
+                                print("\n\n" + "=" * 45)
+                                print("🎉 File Received Successfully!")
+                                print(f"💾 Saved to: {save_path}")
+                                print(
+                                    f"🔑 Expected Hash: {rx_state['expected_hash']}"
+                                )
+                                print(f"🔑 Received Hash: {calc_hash}")
+                                if calc_hash == rx_state["expected_hash"]:
+                                    print("✅ Integrity Check: MATCH (100% OK)")
+                                else:
+                                    print(
+                                        "❌ Integrity Check: HASH MISMATCH (Corruption detected)"
+                                    )
+                                print("=" * 45)
+                        except Exception as e:
+                            with status_box:
+                                print(f"\n❌ Reconstruction Error: {e}")
+                    else:
+                        with status_box:
+                            print(
+                                f"\n⚠️ Incomplete transfer: Received {len(rx_state['chunks'])}/{rx_state['total_chunks']} frames."
+                            )
+
+            def listen_worker():
+                listen_for_payloads(
+                    rx_state["stop_evt"], on_frame, status_box
+                )
+
+            threading.Thread(target=listen_worker).start()
+
+        def on_stop_clicked(_):
+            if rx_state["stop_evt"]:
+                rx_state["stop_evt"].set()
+            with status_box:
+                print("\n🛑 Listening stopped.")
+
+        btn_check.on_click(on_check_sender_clicked)
+        btn_receive.on_click(on_receive_clicked)
+        btn_stop.on_click(on_stop_clicked)
+
+        dynamic_container.children = [
+            save_input,
+            widgets.HBox([btn_check, btn_receive, btn_stop]),
+            status_box,
+        ]
+
+
+def on_mode_change(change):
+    render_ui(change["new"])
+
+
+mode_selector.observe(on_mode_change, names="value")
+
+# Initial Render
+display(mode_selector)
+display(dynamic_container)
+render_ui("Sender")
