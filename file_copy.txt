@@ -1,3 +1,5 @@
+#!pip install ggwave sounddevice numpy ipywidgets
+
 import base64
 import gzip
 import hashlib
