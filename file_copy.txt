@@ -1,6 +1,8 @@
-#!pip install scipy sounddevice numpy ipywidgets
+# ==============================================================================
+# ACOUSTIC DATA LINK: DIAGNOSTICS, PAIRING & FILE TRANSFER
+# Pure Python (NumPy + SciPy + SoundDevice + IPyWidgets) - Zero C++ Compilers
+# ==============================================================================
 
-import base64
 import gzip
 import hashlib
 import os
@@ -8,450 +10,613 @@ import struct
 import threading
 import time
 import ipywidgets as widgets
-from IPython.display import display
+from IPython.display import clear_output, display
 import numpy as np
 from scipy.fft import rfft, rfftfreq
 import sounddevice as sd
 
-# --- Acoustic Protocol Parameters ---
+# --- Audio & Physical Layer Settings ---
 SAMPLE_RATE = 44100
-SYMBOL_DURATION = 0.025  # 25 ms per byte (~40 bytes/sec raw)
-SAMPLES_PER_SYMBOL = int(SAMPLE_RATE * SYMBOL_DURATION)
+SYMBOL_DURATION = 0.035  # 35ms per symbol (resilient to room reverb)
+SAMPLES_PER_SYM = int(SAMPLE_RATE * SYMBOL_DURATION)
 
-# Dual-Band 16-FSK Frequencies (Low Nibble + High Nibble)
-LOW_FREQS = [1200 + i * 120 for i in range(16)]  # 1200 Hz to 3000 Hz
-HIGH_FREQS = [3400 + i * 120 for i in range(16)]  # 3400 Hz to 5200 Hz
+# Frequencies for 16-FSK (Hex nibbles 0x0 to 0xF)
+# Spaced across 1600 Hz - 4000 Hz (Optimal for laptop mic/speaker response)
+FSK_FREQS = [1600 + i * 160 for i in range(16)]
 
-# Control Frequencies (Handshake & Sync)
-TONE_PING = 800
-TONE_PONG = 950
-TONE_PREAMBLE = 6000
+# Special Control / Handshake Frequencies
+FREQ_PING = 1100
+FREQ_PONG = 1350
+FREQ_PREAMBLE = 4800
 
-# --- Modulation (Transmitter) ---
+# --- Helper Signal Generation ---
 
 
-def generate_tone(freq, duration):
+def make_tone(freq, duration=0.4, amp=0.5):
+    """Generates a smoothed sine wave tone."""
     t = np.linspace(0, duration, int(SAMPLE_RATE * duration), endpoint=False)
-    # Apply cosine envelope to prevent audio clicking
-    envelope = np.sin(np.pi * np.linspace(0, 1, len(t)))
-    return (np.sin(2 * np.pi * freq * t) * envelope * 0.5).astype(np.float32)
+    # Cosine window to eliminate speaker clicks
+    window = np.sin(np.pi * np.linspace(0, 1, len(t)))
+    return (np.sin(2 * np.pi * freq * t) * window * amp).astype(np.float32)
 
 
-def encode_byte_stream(data_bytes):
-    """Encodes a byte array into a continuous dual-tone audio wave."""
-    audio_segments = []
+def make_chirp(start_f, end_f, duration=0.25, amp=0.5):
+    """Generates a linear frequency sweep for synchronization."""
+    t = np.linspace(0, duration, int(SAMPLE_RATE * duration), endpoint=False)
+    phase = 2 * np.pi * (start_f * t + (end_f - start_f) * (t**2) / (2 * duration))
+    window = np.sin(np.pi * np.linspace(0, 1, len(t)))
+    return (np.sin(phase) * window * amp).astype(np.float32)
 
-    # 1. Preamble sync chirp (300 ms)
-    audio_segments.append(generate_tone(TONE_PREAMBLE, 0.3))
-    audio_segments.append(
+
+def get_peak_snr(audio_chunk, target_freq, tolerance=60):
+    """Calculates Signal-to-Noise Ratio (SNR) for a specific frequency target."""
+    if len(audio_chunk) < 512:
+        return 0.0
+    spectrum = np.abs(rfft(audio_chunk))
+    freqs = rfftfreq(len(audio_chunk), 1.0 / SAMPLE_RATE)
+
+    target_mask = (freqs >= target_freq - tolerance) & (
+        freqs <= target_freq + tolerance
+    )
+    if not np.any(target_mask):
+        return 0.0
+
+    target_power = np.max(spectrum[target_mask])
+    noise_floor = np.median(spectrum) + 1e-6
+    return target_power / noise_floor
+
+
+def decode_fsk_nibble(audio_chunk):
+    """Identifies the dominant FSK frequency bin using relative energy."""
+    spectrum = np.abs(rfft(audio_chunk))
+    freqs = rfftfreq(len(audio_chunk), 1.0 / SAMPLE_RATE)
+
+    max_snr = 0
+    best_nibble = None
+
+    noise_floor = np.median(spectrum) + 1e-6
+
+    for nibble, freq in enumerate(FSK_FREQS):
+        mask = (freqs >= freq - 50) & (freqs <= freq + 50)
+        if np.any(mask):
+            peak = np.max(spectrum[mask])
+            snr = peak / noise_floor
+            if snr > max_snr and snr > 3.0:  # 3x noise floor threshold
+                max_snr = snr
+                best_nibble = nibble
+
+    return best_nibble
+
+
+# ==============================================================================
+# TAB 1: LOCAL HARDWARE DIAGNOSTIC (Speaker & Mic Test)
+# ==============================================================================
+
+diag_out = widgets.Output()
+btn_speaker_test = widgets.Button(
+    description="Test Speaker", button_style="info", icon="volume-up"
+)
+btn_mic_test = widgets.Button(
+    description="Test Mic (5s)", button_style="warning", icon="microphone"
+)
+mic_progress = widgets.FloatProgress(
+    value=0,
+    min=0,
+    max=1.0,
+    description="Mic Level:",
+    bar_style="success",
+    layout=widgets.Layout(width="400px"),
+)
+
+
+def run_speaker_test(_):
+    with diag_out:
+        clear_output()
+        print("🔊 Playing melodic test tone (Low -> High sweep)...")
+
+    # Generate a smooth arpeggio
+    notes = [440, 554, 659, 880]
+    audio = np.concatenate([make_tone(n, 0.15, 0.4) for n in notes])
+    sd.play(audio, samplerate=SAMPLE_RATE, blocking=False)
+
+
+def run_mic_test(_):
+    btn_mic_test.disabled = True
+
+    def worker():
+        with diag_out:
+            clear_output()
+            print("🎙️ Listening... Please speak or tap near the laptop.")
+
+        peak_levels = []
+
+        def audio_cb(indata, frames, t_info, status):
+            level = float(np.max(np.abs(indata[:, 0])))
+            peak_levels.append(level)
+            mic_progress.value = min(level * 3.0, 1.0)  # Visual amplifier
+
+        stream = sd.InputStream(
+            channels=1, samplerate=SAMPLE_RATE, blocksize=2048, callback=audio_cb
+        )
+        with stream:
+            time.sleep(5.0)
+
+        btn_mic_test.disabled = False
+        mic_progress.value = 0
+        avg_peak = np.mean(peak_levels) if peak_levels else 0
+
+        with diag_out:
+            clear_output()
+            if avg_peak > 0.02:
+                print(
+                    f"✅ Microphone Working! Detected average level: {avg_peak * 100:.1f}%"
+                )
+            else:
+                print(
+                    "⚠️ Very low input detected. Please increase your microphone input gain in OS settings."
+                )
+
+    threading.Thread(target=worker).start()
+
+
+btn_speaker_test.on_click(run_speaker_test)
+btn_mic_test.on_click(run_mic_test)
+
+tab_diagnostics = widgets.VBox(
+    [
+        widgets.HTML(
+            "<h4>Step 1: Verify Laptop Sound & Microphone Locally</h4>"
+        ),
+        widgets.HBox([btn_speaker_test, btn_mic_test]),
+        mic_progress,
+        diag_out,
+    ]
+)
+
+# ==============================================================================
+# TAB 2: INTER-DEVICE PAIRING (Ping-Pong Link Quality)
+# ==============================================================================
+
+pair_out = widgets.Output()
+btn_send_ping = widgets.Button(
+    description="Send Ping (Tester)", button_style="primary", icon="podcast"
+)
+btn_auto_beacon = widgets.ToggleButton(
+    value=False,
+    description="Echo Responder (Receiver)",
+    button_style="info",
+    icon="satellite-dish",
+)
+pair_status = widgets.Label(value="Status: Ready")
+
+beacon_stop = threading.Event()
+
+
+def send_ping_action(_):
+    btn_send_ping.disabled = True
+    pair_status.value = "Status: Sending Ping & Waiting for Echo..."
+
+    def worker():
+        with pair_out:
+            clear_output()
+            print("🔊 Transmitting Ping tone (1100 Hz)...")
+
+        # Play Ping
+        sd.play(make_tone(FREQ_PING, 0.4, 0.6), samplerate=SAMPLE_RATE, blocking=True)
+
+        # Listen for Pong Echo
+        heard_pong = False
+        t_start = time.time()
+
+        def listen_cb(indata, frames, t_info, status):
+            nonlocal heard_pong
+            snr = get_peak_snr(indata[:, 0], FREQ_PONG)
+            if snr > 4.0:
+                heard_pong = True
+
+        stream = sd.InputStream(
+            channels=1,
+            samplerate=SAMPLE_RATE,
+            blocksize=2048,
+            callback=listen_cb,
+        )
+        with stream:
+            while (time.time() - t_start < 6.0) and not heard_pong:
+                time.sleep(0.05)
+
+        btn_send_ping.disabled = False
+        with pair_out:
+            clear_output()
+            if heard_pong:
+                pair_status.value = "Status: Connected ✅"
+                print("🎉 SUCCESS! Received echo response from the other laptop.")
+                print(
+                    "Signal path verified: Speakers and Microphones are calibrated."
+                )
+            else:
+                pair_status.value = "Status: No response ❌"
+                print(
+                    "❌ No echo received within 6s. Make sure the other laptop enabled 'Echo Responder'."
+                )
+
+    threading.Thread(target=worker).start()
+
+
+def toggle_beacon(change):
+    if change["new"]:
+        beacon_stop.clear()
+        btn_auto_beacon.button_style = "danger"
+        btn_auto_beacon.description = "Stop Responder"
+        pair_status.value = "Status: Active & Listening for Pings..."
+
+        def worker():
+            with pair_out:
+                clear_output()
+                print(
+                    "📡 Auto-responder active. Waiting to hear Ping from the sender..."
+                )
+
+            def cb(indata, frames, t_info, status):
+                snr = get_peak_snr(indata[:, 0], FREQ_PING)
+                if snr > 4.0:
+                    # Heard ping -> reply with pong!
+                    time.sleep(0.1)
+                    sd.play(
+                        make_tone(FREQ_PONG, 0.4, 0.6),
+                        samplerate=SAMPLE_RATE,
+                        blocking=False,
+                    )
+                    with pair_out:
+                        print("⚡ Heard Ping! Sent Pong back.")
+
+            stream = sd.InputStream(
+                channels=1, samplerate=SAMPLE_RATE, blocksize=2048, callback=cb
+            )
+            with stream:
+                while not beacon_stop.is_set():
+                    time.sleep(0.1)
+
+            with pair_out:
+                print("🛑 Responder stopped.")
+
+        threading.Thread(target=worker).start()
+    else:
+        beacon_stop.set()
+        btn_auto_beacon.button_style = "info"
+        btn_auto_beacon.description = "Echo Responder (Receiver)"
+        pair_status.value = "Status: Idle"
+
+
+btn_send_ping.on_click(send_ping_action)
+btn_auto_beacon.observe(toggle_beacon, names="value")
+
+tab_pairing = widgets.VBox(
+    [
+        widgets.HTML(
+            "<h4>Step 2: Test Acoustic Handshake Between Both Devices</h4>"
+        ),
+        widgets.HTML(
+            "<p>1. On <b>Laptop B</b>, click <i>'Echo Responder'</i>.<br>2. On <b>Laptop A</b>, click <i>'Send Ping'</i> to test two-way communication.</p>"
+        ),
+        widgets.HBox([btn_send_ping, btn_auto_beacon]),
+        pair_status,
+        pair_out,
+    ]
+)
+
+# ==============================================================================
+# TAB 3: FILE TRANSFER (Sender & Receiver)
+# ==============================================================================
+
+# --- SENDER WIDGETS ---
+txt_file_path = widgets.Text(
+    value="data.txt",
+    description="File:",
+    layout=widgets.Layout(width="350px"),
+)
+btn_send_file = widgets.Button(
+    description="Transmit File", button_style="success", icon="paper-plane"
+)
+send_progress = widgets.IntProgress(
+    value=0,
+    min=0,
+    max=100,
+    description="Sending:",
+    bar_style="info",
+    layout=widgets.Layout(width="400px"),
+)
+sender_out = widgets.Output()
+
+# --- RECEIVER WIDGETS ---
+txt_save_path = widgets.Text(
+    value="received_file.txt",
+    description="Save As:",
+    layout=widgets.Layout(width="350px"),
+)
+btn_start_recv = widgets.Button(
+    description="Start Listening", button_style="success", icon="headphones"
+)
+btn_stop_recv = widgets.Button(
+    description="Cancel", button_style="danger", icon="stop"
+)
+recv_progress = widgets.IntProgress(
+    value=0,
+    min=0,
+    max=100,
+    description="Receiving:",
+    bar_style="info",
+    layout=widgets.Layout(width="400px"),
+)
+receiver_out = widgets.Output()
+
+rx_stop_event = threading.Event()
+
+
+def execute_file_transmission(_):
+    path = txt_file_path.value.strip()
+    if not os.path.exists(path):
+        with sender_out:
+            clear_output()
+            print(f"❌ Error: File '{path}' does not exist.")
+        return
+
+    with open(path, "rb") as f:
+        raw_bytes = f.read()
+
+    file_hash = hashlib.sha256(raw_bytes).hexdigest()
+    compressed = gzip.compress(raw_bytes)
+
+    # Packet framing: [4 bytes length] + [compressed payload] + [32 bytes SHA256 hex]
+    payload = (
+        struct.pack(">I", len(compressed))
+        + compressed
+        + file_hash[:16].encode("ascii")
+    )
+    total_nibbles = len(payload) * 2
+
+    # Build audio stream
+    audio_blocks = []
+    # 1. Preamble Chirp
+    audio_blocks.append(make_chirp(2000, 4800, duration=0.4, amp=0.6))
+    audio_blocks.append(
         np.zeros(int(SAMPLE_RATE * 0.05), dtype=np.float32)
-    )  # 50ms guard
+    )  # Guard interval
 
-    # 2. Encode each byte as a pair of simultaneous frequencies
-    t = np.linspace(
-        0, SYMBOL_DURATION, SAMPLES_PER_SYMBOL, endpoint=False
+    t_sym = np.linspace(
+        0, SYMBOL_DURATION, SAMPLES_PER_SYM, endpoint=False
     ).astype(np.float32)
-    envelope = np.sin(np.pi * np.linspace(0, 1, SAMPLES_PER_SYMBOL)).astype(
+    sym_win = np.sin(np.pi * np.linspace(0, 1, SAMPLES_PER_SYM)).astype(
         np.float32
     )
 
-    for b in data_bytes:
-        low_nibble = b & 0x0F
-        high_nibble = (b >> 4) & 0x0F
-
-        f1 = LOW_FREQS[low_nibble]
-        f2 = HIGH_FREQS[high_nibble]
-
-        tone = (np.sin(2 * np.pi * f1 * t) + np.sin(2 * np.pi * f2 * t)) * 0.25
-        audio_segments.append((tone * envelope).astype(np.float32))
-
-    # 3. Postamble sync
-    audio_segments.append(generate_tone(TONE_PREAMBLE, 0.2))
-    return np.concatenate(audio_segments)
-
-
-# --- Demodulation (Receiver) ---
-
-
-def detect_frequency(
-    audio_block, target_freqs, tolerance=60, min_threshold=0.08
-):
-    """Detects the strongest matching target frequency using FFT."""
-    if len(audio_block) == 0:
-        return None
-    spectrum = np.abs(rfft(audio_block))
-    freqs = rfftfreq(len(audio_block), 1.0 / SAMPLE_RATE)
-
-    max_mag = -1
-    best_idx = None
-
-    for idx, target in enumerate(target_freqs):
-        mask = (freqs >= target - tolerance) & (freqs <= target + tolerance)
-        if np.any(mask):
-            mag = np.max(spectrum[mask])
-            if mag > max_mag and mag > min_threshold:
-                max_mag = mag
-                best_idx = idx
-
-    return best_idx
-
-
-# --- Jupyter GUI & Controller ---
-
-mode_selector = widgets.ToggleButtons(
-    options=["Sender", "Receiver"], description="Role:", button_style="primary"
-)
-dynamic_container = widgets.VBox([])
-active_stop_event = None
-
-
-def render_ui(mode):
-    global active_stop_event
-    if active_stop_event:
-        active_stop_event.set()
-
-    if mode == "Sender":
-        file_input = widgets.Text(
-            value="data.txt",
-            description="File Path:",
-            layout=widgets.Layout(width="450px"),
-        )
-        btn_check = widgets.Button(
-            description="Check Receiver Device",
-            button_style="info",
-            icon="plug",
-        )
-        btn_send = widgets.Button(
-            description="Start Sending",
-            button_style="success",
-            icon="paper-plane",
-        )
-        status_box = widgets.Output()
-
-        def on_check_receiver_clicked(_):
-            status_box.clear_output()
-            with status_box:
-                print("🔊 Sending Handshake Tone (Ping)...")
-
-            def worker():
-                # Play Ping Tone
-                ping_wave = generate_tone(TONE_PING, 0.4)
-                sd.play(ping_wave, samplerate=SAMPLE_RATE, blocking=True)
-
-                # Listen for Pong response
-                with status_box:
-                    print("👂 Waiting for Receiver ACK...")
-
-                ack_heard = False
-                start_t = time.time()
-
-                def record_callback(indata, frames, t_info, status):
-                    nonlocal ack_heard
-                    blk = indata[:, 0]
-                    if (
-                        detect_frequency(
-                            blk, [TONE_PONG], tolerance=50, min_threshold=0.1
-                        )
-                        is not None
-                    ):
-                        ack_heard = True
-
-                with sd.InputStream(
-                    channels=1,
-                    samplerate=SAMPLE_RATE,
-                    blocksize=2048,
-                    callback=record_callback,
-                ):
-                    while time.time() - start_t < 6.0 and not ack_heard:
-                        time.sleep(0.05)
-
-                with status_box:
-                    if ack_heard:
-                        print("✅ Handshake Verified! Receiver is online.")
-                    else:
-                        print("❌ No response. Check volume and proximity.")
-
-            threading.Thread(target=worker).start()
-
-        def on_send_clicked(_):
-            status_box.clear_output()
-            path = file_input.value.strip()
-
-            if not os.path.exists(path):
-                with status_box:
-                    print(f"❌ Error: File '{path}' not found.")
-                return
-
-            with open(path, "rb") as f:
-                raw_bytes = f.read()
-
-            file_hash = hashlib.sha256(raw_bytes).hexdigest()
-            compressed = gzip.compress(raw_bytes)
-
-            # Frame Structure: [4-byte Compressed Length] + [Compressed Data] + [32-byte SHA256 Hash]
-            payload = (
-                struct.pack(">I", len(compressed))
-                + compressed
-                + file_hash.encode("ascii")
+    for byte in payload:
+        # High nibble then low nibble
+        for nibble in [(byte >> 4) & 0x0F, byte & 0x0F]:
+            freq = FSK_FREQS[nibble]
+            tone = (np.sin(2 * np.pi * freq * t_sym) * sym_win * 0.5).astype(
+                np.float32
             )
-            wave = encode_byte_stream(payload)
-            est_time = len(wave) / SAMPLE_RATE
+            audio_blocks.append(tone)
 
-            with status_box:
-                print(f"📦 File: {os.path.basename(path)}")
-                print(f"📊 Original Size: {len(raw_bytes):,} bytes")
-                print(f"🗜️ Compressed Size: {len(compressed):,} bytes")
-                print(f"🔑 SHA-256: {file_hash}")
-                print(
-                    f"🚀 Transmitting (~{est_time:.1f}s)... Keep room quiet."
+    # Postamble Chirp
+    audio_blocks.append(make_chirp(4800, 2000, duration=0.3, amp=0.6))
+    full_audio = np.concatenate(audio_blocks)
+
+    duration_sec = len(full_audio) / SAMPLE_RATE
+
+    with sender_out:
+        clear_output()
+        print(f"📦 File: {os.path.basename(path)}")
+        print(
+            f"📊 Size: {len(raw_bytes):,} bytes  ➔  Compressed: {len(compressed):,} bytes"
+        )
+        print(f"🔑 SHA-256 (Prefix): {file_hash[:16]}")
+        print(
+            f"⏳ Est. Time: {duration_sec:.1f}s across {total_nibbles} audio symbols"
+        )
+
+    def tx_worker():
+        btn_send_file.disabled = True
+        send_progress.max = total_nibbles
+        send_progress.value = 0
+
+        sd.play(full_audio, samplerate=SAMPLE_RATE, blocking=False)
+
+        # Update progress bar smoothly with elapsed time
+        start_time = time.time()
+        while time.time() - start_time < duration_sec:
+            elapsed = time.time() - start_time
+            curr_sym = int((elapsed / duration_sec) * total_nibbles)
+            send_progress.value = min(curr_sym, total_nibbles)
+            time.sleep(0.1)
+
+        send_progress.value = total_nibbles
+        btn_send_file.disabled = False
+        with sender_out:
+            print("\n✨ Transmission Complete!")
+
+    threading.Thread(target=tx_worker).start()
+
+
+def execute_file_reception(_):
+    rx_stop_event.clear()
+    btn_start_recv.disabled = True
+    recv_progress.value = 0
+
+    with receiver_out:
+        clear_output()
+        print(
+            "🎧 Listening for incoming transmission chirp... (Press 'Cancel' to abort)"
+        )
+
+    def rx_worker():
+        buffer = []
+        state = "WAIT_PREAMBLE"
+        received_nibbles = []
+        expected_len = None
+
+        def audio_cb(indata, frames, t_info, status):
+            if rx_stop_event.is_set():
+                raise sd.CallbackStop
+            buffer.extend(indata[:, 0])
+
+        stream = sd.InputStream(
+            channels=1,
+            samplerate=SAMPLE_RATE,
+            blocksize=1024,
+            callback=audio_cb,
+        )
+        with stream:
+            while not rx_stop_event.is_set():
+                if state == "WAIT_PREAMBLE":
+                    if len(buffer) >= 8192:
+                        chunk = np.array(buffer[:8192])
+                        snr = get_peak_snr(chunk, FREQ_PREAMBLE, tolerance=150)
+                        if snr > 3.5:
+                            state = "READING_DATA"
+                            # Advance past the preamble
+                            buffer = buffer[
+                                int(
+                                    4096
+                                    + SAMPLE_RATE
+                                    * (SYMBOL_DURATION + 0.05)
+                                ) :
+                            ]
+                            with receiver_out:
+                                print(
+                                    "⚡ Transmission detected! Decoding data stream..."
+                                )
+                        else:
+                            buffer = buffer[2048:]
+
+                elif state == "READING_DATA":
+                    while len(buffer) >= SAMPLES_PER_SYM:
+                        sym_chunk = np.array(buffer[:SAMPLES_PER_SYM])
+                        buffer = buffer[SAMPLES_PER_SYM:]
+
+                        nibble = decode_fsk_nibble(sym_chunk)
+                        if nibble is not None:
+                            received_nibbles.append(nibble)
+                            recv_progress.value = len(received_nibbles)
+
+                            # Determine total length once 4-byte header (8 nibbles) is received
+                            if (
+                                len(received_nibbles) == 8
+                                and expected_len is None
+                            ):
+                                header_bytes = bytearray()
+                                for i in range(0, 8, 2):
+                                    header_bytes.append(
+                                        (received_nibbles[i] << 4)
+                                        | received_nibbles[i + 1]
+                                    )
+                                comp_len = struct.unpack(
+                                    ">I", header_bytes[:4]
+                                )[0]
+                                expected_len = comp_len
+                                total_expected_nibbles = (
+                                    4 + comp_len + 16
+                                ) * 2
+                                recv_progress.max = total_expected_nibbles
+                                with receiver_out:
+                                    print(
+                                        f"📥 Incoming payload: {comp_len:,} compressed bytes"
+                                    )
+
+                            # Check completion
+                            if (
+                                expected_len
+                                and len(received_nibbles)
+                                >= (4 + expected_len + 16) * 2
+                            ):
+                                state = "DONE"
+                                rx_stop_event.set()
+                                break
+
+                time.sleep(0.01)
+
+        btn_start_recv.disabled = False
+
+        # Reconstruct byte array
+        if len(received_nibbles) >= 8:
+            raw_bytes = bytearray()
+            for i in range(0, len(received_nibbles) - 1, 2):
+                raw_bytes.append(
+                    (received_nibbles[i] << 4) | received_nibbles[i + 1]
                 )
 
-            def play_worker():
-                sd.play(wave, samplerate=SAMPLE_RATE, blocking=True)
-                with status_box:
-                    print("\n✨ Sound transmission finished!")
+            try:
+                comp_len = struct.unpack(">I", raw_bytes[:4])[0]
+                comp_data = bytes(raw_bytes[4 : 4 + comp_len])
+                exp_hash_prefix = bytes(
+                    raw_bytes[4 + comp_len : 4 + comp_len + 16]
+                ).decode("ascii")
 
-            threading.Thread(target=play_worker).start()
+                decomp = gzip.decompress(comp_data)
+                calc_hash = hashlib.sha256(decomp).hexdigest()
 
-        btn_check.on_click(on_check_receiver_clicked)
-        btn_send.on_click(on_send_clicked)
+                save_path = txt_save_path.value.strip()
+                with open(save_path, "wb") as f:
+                    f.write(decomp)
 
-        dynamic_container.children = [
-            file_input,
-            widgets.HBox([btn_check, btn_send]),
-            status_box,
-        ]
-
-    else:  # Receiver Mode
-        save_input = widgets.Text(
-            value="received_file.txt",
-            description="Save As:",
-            layout=widgets.Layout(width="450px"),
-        )
-        btn_check = widgets.Button(
-            description="Check Sender Device",
-            button_style="info",
-            icon="plug",
-        )
-        btn_receive = widgets.Button(
-            description="Start Receiving",
-            button_style="success",
-            icon="headphones",
-        )
-        btn_stop = widgets.Button(
-            description="Stop", button_style="danger", icon="stop"
-        )
-        status_box = widgets.Output()
-
-        def on_check_sender_clicked(_):
-            status_box.clear_output()
-            with status_box:
-                print("👂 Listening for Sender Ping (8s timeout)...")
-
-            def worker():
-                heard_ping = False
-                start_t = time.time()
-
-                def callback(indata, frames, t_info, status):
-                    nonlocal heard_ping
-                    if (
-                        detect_frequency(
-                            indata[:, 0],
-                            [TONE_PING],
-                            tolerance=50,
-                            min_threshold=0.1,
-                        )
-                        is not None
-                    ):
-                        heard_ping = True
-
-                with sd.InputStream(
-                    channels=1,
-                    samplerate=SAMPLE_RATE,
-                    blocksize=2048,
-                    callback=callback,
-                ):
-                    while time.time() - start_t < 8.0 and not heard_ping:
-                        time.sleep(0.05)
-
-                if heard_ping:
-                    with status_box:
-                        print("📡 Ping detected! Responding with Pong...")
-                    pong_wave = generate_tone(TONE_PONG, 0.4)
-                    sd.play(pong_wave, samplerate=SAMPLE_RATE, blocking=True)
-                    with status_box:
-                        print("✅ Handshake complete.")
-                else:
-                    with status_box:
-                        print("❌ Timed out waiting for Ping.")
-
-            threading.Thread(target=worker).start()
-
-        def on_receive_clicked(_):
-            global active_stop_event
-            status_box.clear_output()
-            active_stop_event = threading.Event()
-            stop_evt = active_stop_event
-
-            with status_box:
-                print(
-                    "🎧 Listening for incoming transmission... (Click 'Start Sending' on Sender)"
-                )
-
-            def rx_worker():
-                buffer = []
-                state = "WAIT_PREAMBLE"
-                received_bytes = bytearray()
-                expected_len = None
-                expected_hash = None
-
-                def audio_cb(indata, frames, t_info, status):
-                    if stop_evt.is_set():
-                        raise sd.CallbackStop
-                    buffer.extend(indata[:, 0])
-
-                with sd.InputStream(
-                    channels=1,
-                    samplerate=SAMPLE_RATE,
-                    blocksize=1024,
-                    callback=audio_cb,
-                ):
-                    while not stop_evt.is_set():
-                        if state == "WAIT_PREAMBLE":
-                            if len(buffer) >= 4096:
-                                chunk = np.array(buffer[:4096])
-                                if (
-                                    detect_frequency(
-                                        chunk,
-                                        [TONE_PREAMBLE],
-                                        tolerance=100,
-                                        min_threshold=0.15,
-                                    )
-                                    is not None
-                                ):
-                                    state = "PREAMBLE_FOUND"
-                                    # Skip ahead past preamble
-                                    buffer = buffer[
-                                        int(
-                                            4096
-                                            + SAMPLE_RATE
-                                            * (0.3 + 0.05 - 0.05)
-                                        ) :
-                                    ]
-                                    with status_box:
-                                        print("⚡ Signal detected! Decoding...")
-                                else:
-                                    buffer = buffer[2048:]
-
-                        elif state == "PREAMBLE_FOUND":
-                            # Process symbol by symbol
-                            while len(buffer) >= SAMPLES_PER_SYMBOL:
-                                sym = np.array(buffer[:SAMPLES_PER_SYMBOL])
-                                buffer = buffer[SAMPLES_PER_SYMBOL:]
-
-                                # Check for end preamble
-                                if (
-                                    detect_frequency(
-                                        sym,
-                                        [TONE_PREAMBLE],
-                                        tolerance=100,
-                                        min_threshold=0.15,
-                                    )
-                                    is not None
-                                ):
-                                    state = "DONE"
-                                    stop_evt.set()
-                                    break
-
-                                l_idx = detect_frequency(
-                                    sym, LOW_FREQS, tolerance=50
-                                )
-                                h_idx = detect_frequency(
-                                    sym, HIGH_FREQS, tolerance=50
-                                )
-
-                                if l_idx is not None and h_idx is not None:
-                                    val = (h_idx << 4) | l_idx
-                                    received_bytes.append(val)
-
-                                    # Check if we have received the 4-byte header
-                                    if (
-                                        len(received_bytes) == 4
-                                        and expected_len is None
-                                    ):
-                                        expected_len = struct.unpack(
-                                            ">I", received_bytes[:4]
-                                        )[0]
-
-                        time.sleep(0.02)
-
-                # Process Decoded Data
-                if len(received_bytes) > 4 + 64:
-                    try:
-                        comp_len = struct.unpack(">I", received_bytes[:4])[0]
-                        comp_data = bytes(received_bytes[4 : 4 + comp_len])
-                        exp_hash = bytes(
-                            received_bytes[4 + comp_len : 4 + comp_len + 64]
-                        ).decode("ascii")
-
-                        decomp = gzip.decompress(comp_data)
-                        calc_hash = hashlib.sha256(decomp).hexdigest()
-
-                        save_path = save_input.value.strip()
-                        with open(save_path, "wb") as f:
-                            f.write(decomp)
-
-                        with status_box:
-                            print("\n" + "=" * 45)
-                            print("🎉 File Received & Decoded Successfully!")
-                            print(f"💾 Saved to: {save_path}")
-                            print(f"🔑 Expected Hash: {exp_hash}")
-                            print(f"🔑 Received Hash: {calc_hash}")
-                            if calc_hash == exp_hash:
-                                print(
-                                    "✅ Integrity Check: 100% MATCH (No errors)"
-                                )
-                            else:
-                                print(
-                                    "❌ Integrity Check: HASH MISMATCH (Noise corruption)"
-                                )
-                            print("=" * 45)
-                    except Exception as e:
-                        with status_box:
-                            print(f"\n❌ Reconstruction Error: {e}")
-                else:
-                    with status_box:
+                with receiver_out:
+                    print("\n" + "=" * 46)
+                    print("🎉 File Received and Verified!")
+                    print(f"💾 Saved to: {save_path}")
+                    print(f"📊 Decompressed Size: {len(decomp):,} bytes")
+                    print(f"🔑 Expected Hash (Prefix): {exp_hash_prefix}")
+                    print(f"🔑 Received Hash (Full):   {calc_hash}")
+                    if calc_hash.startswith(exp_hash_prefix):
+                        print("✅ Integrity Check: 100% MATCH")
+                    else:
                         print(
-                            f"\n⚠️ Incomplete signal: Captured {len(received_bytes)} bytes."
+                            "❌ Integrity Check: HASH MISMATCH (Noise corruption detected)"
                         )
+                    print("=" * 46)
+            except Exception as e:
+                with receiver_out:
+                    print(
+                        f"\n⚠️ Decoding Error: {e}. Ensure volume is clear and retry."
+                    )
+        else:
+            with receiver_out:
+                print("\n🛑 Reception ended with incomplete or empty signal.")
 
-            threading.Thread(target=rx_worker).start()
-
-        def on_stop_clicked(_):
-            global active_stop_event
-            if active_stop_event:
-                active_stop_event.set()
-            with status_box:
-                print("\n🛑 Listening cancelled.")
-
-        btn_check.on_click(on_check_sender_clicked)
-        btn_receive.on_click(on_receive_clicked)
-        btn_stop.on_click(on_stop_clicked)
-
-        dynamic_container.children = [
-            save_input,
-            widgets.HBox([btn_check, btn_receive, btn_stop]),
-            status_box,
-        ]
+    threading.Thread(target=rx_worker).start()
 
 
-def on_mode_change(change):
-    render_ui(change["new"])
+def cancel_file_reception(_):
+    rx_stop_event.set()
+    btn_start_recv.disabled = False
+    with receiver_out:
+        print("\n🛑 Reception cancelled.")
 
 
-mode_selector.observe(on_mode_change, names="value")
+btn_send_file.on_click(execute_file_transmission)
+btn_start_recv.on_click(execute_file_reception)
+btn_stop_recv.on_click(cancel_file_reception)
 
-# Initial Render
-display(mode_selector)
-display(dynamic_container)
-render_ui("Sender")
+tab_transfer = widgets.VBox(
+    [
+        widgets.HTML("<h4>Step 3: High-Speed Acoustic File Transfer</h4>"),
+        widgets.HTML("<b>📤 Sender Controls:</b>"),
+        widgets.HBox([txt_file_path, btn_send_file]),
+        send_progress,
+        sender_out,
+        widgets.HTML("<hr><b>📥 Receiver Controls:</b>"),
+        widgets.HBox([txt_save_path, btn_start_recv, btn_stop_recv]),
+        recv_progress,
+        receiver_out,
+    ]
+)
+
+# ==============================================================================
+# MAIN TAB CONTAINER
+# ==============================================================================
+
+main_tabs = widgets.Tab(children=[tab_diagnostics, tab_pairing, tab_transfer])
+main_tabs.set_title(0, "1. Mic/Speaker Test")
+main_tabs.set_title(1, "2. Pair Devices (Ping-Pong)")
+main_tabs.set_title(2, "3. Transfer File")
+
+display(main_tabs)
