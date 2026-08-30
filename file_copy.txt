@@ -1,100 +1,112 @@
-#!pip install ggwave sounddevice numpy ipywidgets
+#!pip install scipy sounddevice numpy ipywidgets
 
 import base64
 import gzip
 import hashlib
 import os
+import struct
 import threading
 import time
-import ggwave
 import ipywidgets as widgets
-from IPython.display import clear_output, display
+from IPython.display import display
 import numpy as np
+from scipy.fft import rfft, rfftfreq
 import sounddevice as sd
 
-# Audio Configuration
-SAMPLE_RATE = 48000
-PROTOCOL = ggwave.PROTOCOL_AUDIBLE_FASTEST  # High-speed multi-frequency acoustic protocol
-CHUNK_SIZE = 120  # Payload bytes per audio frame
+# --- Acoustic Protocol Parameters ---
+SAMPLE_RATE = 44100
+SYMBOL_DURATION = 0.025  # 25 ms per byte (~40 bytes/sec raw)
+SAMPLES_PER_SYMBOL = int(SAMPLE_RATE * SYMBOL_DURATION)
 
-# --- Sound Transmission Engine ---
+# Dual-Band 16-FSK Frequencies (Low Nibble + High Nibble)
+LOW_FREQS = [1200 + i * 120 for i in range(16)]  # 1200 Hz to 3000 Hz
+HIGH_FREQS = [3400 + i * 120 for i in range(16)]  # 3400 Hz to 5200 Hz
 
+# Control Frequencies (Handshake & Sync)
+TONE_PING = 800
+TONE_PONG = 950
+TONE_PREAMBLE = 6000
 
-def play_payloads(payload_list):
-    """Encodes a list of string payloads into acoustic waves and plays them in sequence."""
-    waveforms = []
-    # Add 0.2s silence as preamble
-    silence = np.zeros(int(SAMPLE_RATE * 0.2), dtype=np.int16)
-    waveforms.append(silence)
-
-    for p in payload_list:
-        waveform = ggwave.encode(p, protocolId=PROTOCOL, volume=50)
-        if waveform:
-            waveforms.append(np.frombuffer(waveform, dtype=np.int16))
-            # 50ms guard interval between frames
-            waveforms.append(np.zeros(int(SAMPLE_RATE * 0.05), dtype=np.int16))
-
-    full_audio = np.concatenate(waveforms)
-    sd.play(full_audio, samplerate=SAMPLE_RATE, blocking=True)
+# --- Modulation (Transmitter) ---
 
 
-def listen_for_payloads(
-    stop_event, callback, status_out, timeout=None, single_match=None
+def generate_tone(freq, duration):
+    t = np.linspace(0, duration, int(SAMPLE_RATE * duration), endpoint=False)
+    # Apply cosine envelope to prevent audio clicking
+    envelope = np.sin(np.pi * np.linspace(0, 1, len(t)))
+    return (np.sin(2 * np.pi * freq * t) * envelope * 0.5).astype(np.float32)
+
+
+def encode_byte_stream(data_bytes):
+    """Encodes a byte array into a continuous dual-tone audio wave."""
+    audio_segments = []
+
+    # 1. Preamble sync chirp (300 ms)
+    audio_segments.append(generate_tone(TONE_PREAMBLE, 0.3))
+    audio_segments.append(
+        np.zeros(int(SAMPLE_RATE * 0.05), dtype=np.float32)
+    )  # 50ms guard
+
+    # 2. Encode each byte as a pair of simultaneous frequencies
+    t = np.linspace(
+        0, SYMBOL_DURATION, SAMPLES_PER_SYMBOL, endpoint=False
+    ).astype(np.float32)
+    envelope = np.sin(np.pi * np.linspace(0, 1, SAMPLES_PER_SYMBOL)).astype(
+        np.float32
+    )
+
+    for b in data_bytes:
+        low_nibble = b & 0x0F
+        high_nibble = (b >> 4) & 0x0F
+
+        f1 = LOW_FREQS[low_nibble]
+        f2 = HIGH_FREQS[high_nibble]
+
+        tone = (np.sin(2 * np.pi * f1 * t) + np.sin(2 * np.pi * f2 * t)) * 0.25
+        audio_segments.append((tone * envelope).astype(np.float32))
+
+    # 3. Postamble sync
+    audio_segments.append(generate_tone(TONE_PREAMBLE, 0.2))
+    return np.concatenate(audio_segments)
+
+
+# --- Demodulation (Receiver) ---
+
+
+def detect_frequency(
+    audio_block, target_freqs, tolerance=60, min_threshold=0.08
 ):
-    """Listens via microphone and decodes ggwave audio packets."""
-    instance = ggwave.init()
-    start_time = time.time()
+    """Detects the strongest matching target frequency using FFT."""
+    if len(audio_block) == 0:
+        return None
+    spectrum = np.abs(rfft(audio_block))
+    freqs = rfftfreq(len(audio_block), 1.0 / SAMPLE_RATE)
 
-    def audio_callback(indata, frames, time_info, status):
-        if stop_event.is_set():
-            raise sd.CallbackStop
-        # Convert float32 to int16 PCM
-        pcm_data = (indata[:, 0] * 32767).astype(np.int16).tobytes()
-        res = ggwave.decode(instance, pcm_data)
-        if res:
-            try:
-                text = res.decode("utf-8")
-                callback(text)
-            except Exception:
-                pass
+    max_mag = -1
+    best_idx = None
 
-    try:
-        with sd.InputStream(
-            channels=1,
-            samplerate=SAMPLE_RATE,
-            dtype="float32",
-            callback=audio_callback,
-            blocksize=1024,
-        ):
-            while not stop_event.is_set():
-                if timeout and (time.time() - start_time > timeout):
-                    break
-                time.sleep(0.05)
-    except sd.CallbackStop:
-        pass
-    except Exception as e:
-        with status_out:
-            print(f"Audio stream error: {e}")
+    for idx, target in enumerate(target_freqs):
+        mask = (freqs >= target - tolerance) & (freqs <= target + tolerance)
+        if np.any(mask):
+            mag = np.max(spectrum[mask])
+            if mag > max_mag and mag > min_threshold:
+                max_mag = mag
+                best_idx = idx
+
+    return best_idx
 
 
-# --- UI & Interaction Setup ---
+# --- Jupyter GUI & Controller ---
 
 mode_selector = widgets.ToggleButtons(
-    options=["Sender", "Receiver"],
-    description="Role:",
-    button_style="primary",
+    options=["Sender", "Receiver"], description="Role:", button_style="primary"
 )
-
-out = widgets.Output()
 dynamic_container = widgets.VBox([])
-
-# Global references for active workers
 active_stop_event = None
-active_thread = None
 
 
 def render_ui(mode):
-    global active_stop_event, active_thread
+    global active_stop_event
     if active_stop_event:
         active_stop_event.set()
 
@@ -119,36 +131,45 @@ def render_ui(mode):
         def on_check_receiver_clicked(_):
             status_box.clear_output()
             with status_box:
-                print("🔊 Sending Handshake Ping [PING_CHECK]...")
+                print("🔊 Sending Handshake Tone (Ping)...")
 
             def worker():
-                stop_evt = threading.Event()
-                ack_received = threading.Event()
+                # Play Ping Tone
+                ping_wave = generate_tone(TONE_PING, 0.4)
+                sd.play(ping_wave, samplerate=SAMPLE_RATE, blocking=True)
 
-                def on_ack(msg):
-                    if msg == "PONG_ACK":
-                        ack_received.set()
-                        stop_evt.set()
-
-                # Start listener thread for ack
-                t_listen = threading.Thread(
-                    target=listen_for_payloads,
-                    args=(stop_evt, on_ack, status_box, 8.0),
-                )
-                t_listen.start()
-
-                # Play ping
-                play_payloads(["PING_CHECK"])
-
-                # Wait for response
-                t_listen.join()
+                # Listen for Pong response
                 with status_box:
-                    if ack_received.is_set():
-                        print(
-                            "✅ Handshake Verified! Receiver responded with ACK."
+                    print("👂 Waiting for Receiver ACK...")
+
+                ack_heard = False
+                start_t = time.time()
+
+                def record_callback(indata, frames, t_info, status):
+                    nonlocal ack_heard
+                    blk = indata[:, 0]
+                    if (
+                        detect_frequency(
+                            blk, [TONE_PONG], tolerance=50, min_threshold=0.1
                         )
+                        is not None
+                    ):
+                        ack_heard = True
+
+                with sd.InputStream(
+                    channels=1,
+                    samplerate=SAMPLE_RATE,
+                    blocksize=2048,
+                    callback=record_callback,
+                ):
+                    while time.time() - start_t < 6.0 and not ack_heard:
+                        time.sleep(0.05)
+
+                with status_box:
+                    if ack_heard:
+                        print("✅ Handshake Verified! Receiver is online.")
                     else:
-                        print("❌ No ACK received. Check volume / distance.")
+                        print("❌ No response. Check volume and proximity.")
 
             threading.Thread(target=worker).start()
 
@@ -166,40 +187,31 @@ def render_ui(mode):
 
             file_hash = hashlib.sha256(raw_bytes).hexdigest()
             compressed = gzip.compress(raw_bytes)
-            b64_data = base64.b64encode(compressed).decode("ascii")
 
-            # Slice into chunks
-            chunks = [
-                b64_data[i : i + CHUNK_SIZE]
-                for i in range(0, len(b64_data), CHUNK_SIZE)
-            ]
-            total_chunks = len(chunks)
+            # Frame Structure: [4-byte Compressed Length] + [Compressed Data] + [32-byte SHA256 Hash]
+            payload = (
+                struct.pack(">I", len(compressed))
+                + compressed
+                + file_hash.encode("ascii")
+            )
+            wave = encode_byte_stream(payload)
+            est_time = len(wave) / SAMPLE_RATE
 
             with status_box:
                 print(f"📦 File: {os.path.basename(path)}")
                 print(f"📊 Original Size: {len(raw_bytes):,} bytes")
+                print(f"🗜️ Compressed Size: {len(compressed):,} bytes")
+                print(f"🔑 SHA-256: {file_hash}")
                 print(
-                    f"🗜️ Compressed Size: {len(compressed):,} bytes ({total_chunks} audio frames)"
+                    f"🚀 Transmitting (~{est_time:.1f}s)... Keep room quiet."
                 )
-                print(f"🔑 SHA-256 Hash: {file_hash}")
-                print("\n🚀 Transmitting sound... Please keep room quiet.")
 
-            def worker():
-                payloads = [f"START:{total_chunks}:{file_hash}"]
-                for idx, c in enumerate(chunks):
-                    payloads.append(f"D:{idx}:{c}")
-                payloads.append("END")
-
-                t0 = time.time()
-                play_payloads(payloads)
-                elapsed = time.time() - t0
-
+            def play_worker():
+                sd.play(wave, samplerate=SAMPLE_RATE, blocking=True)
                 with status_box:
-                    print(
-                        f"\n✨ Transmission complete in {elapsed:.2f} seconds!"
-                    )
+                    print("\n✨ Sound transmission finished!")
 
-            threading.Thread(target=worker).start()
+            threading.Thread(target=play_worker).start()
 
         btn_check.on_click(on_check_receiver_clicked)
         btn_send.on_click(on_send_clicked)
@@ -231,143 +243,196 @@ def render_ui(mode):
         )
         status_box = widgets.Output()
 
-        rx_state = {
-            "stop_evt": None,
-            "total_chunks": 0,
-            "expected_hash": "",
-            "chunks": {},
-            "active": False,
-        }
-
         def on_check_sender_clicked(_):
             status_box.clear_output()
             with status_box:
-                print("👂 Listening for Sender Ping (10s timeout)...")
+                print("👂 Listening for Sender Ping (8s timeout)...")
 
             def worker():
-                stop_evt = threading.Event()
-                ping_detected = threading.Event()
+                heard_ping = False
+                start_t = time.time()
 
-                def on_ping(msg):
-                    if msg == "PING_CHECK":
-                        ping_detected.set()
-                        stop_evt.set()
+                def callback(indata, frames, t_info, status):
+                    nonlocal heard_ping
+                    if (
+                        detect_frequency(
+                            indata[:, 0],
+                            [TONE_PING],
+                            tolerance=50,
+                            min_threshold=0.1,
+                        )
+                        is not None
+                    ):
+                        heard_ping = True
 
-                t_listen = threading.Thread(
-                    target=listen_for_payloads,
-                    args=(stop_evt, on_ping, status_box, 10.0),
-                )
-                t_listen.start()
-                t_listen.join()
+                with sd.InputStream(
+                    channels=1,
+                    samplerate=SAMPLE_RATE,
+                    blocksize=2048,
+                    callback=callback,
+                ):
+                    while time.time() - start_t < 8.0 and not heard_ping:
+                        time.sleep(0.05)
 
-                if ping_detected.is_set():
+                if heard_ping:
                     with status_box:
-                        print("📡 Ping detected! Sending ACK sound back...")
-                    play_payloads(["PONG_ACK"])
+                        print("📡 Ping detected! Responding with Pong...")
+                    pong_wave = generate_tone(TONE_PONG, 0.4)
+                    sd.play(pong_wave, samplerate=SAMPLE_RATE, blocking=True)
                     with status_box:
-                        print("✅ ACK sent to Sender.")
+                        print("✅ Handshake complete.")
                 else:
                     with status_box:
-                        print("❌ No Ping heard within 10s.")
+                        print("❌ Timed out waiting for Ping.")
 
             threading.Thread(target=worker).start()
 
         def on_receive_clicked(_):
+            global active_stop_event
             status_box.clear_output()
-            rx_state["stop_evt"] = threading.Event()
-            rx_state["total_chunks"] = 0
-            rx_state["expected_hash"] = ""
-            rx_state["chunks"] = {}
-            rx_state["active"] = True
+            active_stop_event = threading.Event()
+            stop_evt = active_stop_event
 
             with status_box:
                 print(
-                    "🎧 Listening for file transmission on microphone... (Press Stop to cancel)"
+                    "🎧 Listening for incoming transmission... (Click 'Start Sending' on Sender)"
                 )
 
-            def on_frame(msg):
-                if msg.startswith("START:"):
-                    _, count, h = msg.split(":")
-                    rx_state["total_chunks"] = int(count)
-                    rx_state["expected_hash"] = h
-                    with status_box:
-                        print(
-                            f"⚡ Transmission incoming! Total frames: {count}"
-                        )
-                elif msg.startswith("D:"):
-                    parts = msg.split(":")
-                    idx = int(parts[1])
-                    chunk_data = parts[2]
-                    rx_state["chunks"][idx] = chunk_data
-                    with status_box:
-                        print(
-                            f"📥 Received frame {idx + 1}/{rx_state['total_chunks']}",
-                            end="\r",
-                        )
-                elif (
-                    msg == "END"
-                    or len(rx_state["chunks"])
-                    == rx_state["total_chunks"]
-                    > 0
+            def rx_worker():
+                buffer = []
+                state = "WAIT_PREAMBLE"
+                received_bytes = bytearray()
+                expected_len = None
+                expected_hash = None
+
+                def audio_cb(indata, frames, t_info, status):
+                    if stop_evt.is_set():
+                        raise sd.CallbackStop
+                    buffer.extend(indata[:, 0])
+
+                with sd.InputStream(
+                    channels=1,
+                    samplerate=SAMPLE_RATE,
+                    blocksize=1024,
+                    callback=audio_cb,
                 ):
-                    rx_state["stop_evt"].set()
-                    # Reconstruct
-                    if (
-                        len(rx_state["chunks"])
-                        == rx_state["total_chunks"]
-                        > 0
-                    ):
-                        try:
-                            sorted_b64 = "".join(
-                                [
-                                    rx_state["chunks"][i]
-                                    for i in range(rx_state["total_chunks"])
-                                ]
-                            )
-                            comp_data = base64.b64decode(sorted_b64)
-                            decomp_bytes = gzip.decompress(comp_data)
-                            calc_hash = hashlib.sha256(decomp_bytes).hexdigest()
-
-                            save_path = save_input.value.strip()
-                            with open(save_path, "wb") as f:
-                                f.write(decomp_bytes)
-
-                            with status_box:
-                                print("\n\n" + "=" * 45)
-                                print("🎉 File Received Successfully!")
-                                print(f"💾 Saved to: {save_path}")
-                                print(
-                                    f"🔑 Expected Hash: {rx_state['expected_hash']}"
-                                )
-                                print(f"🔑 Received Hash: {calc_hash}")
-                                if calc_hash == rx_state["expected_hash"]:
-                                    print("✅ Integrity Check: MATCH (100% OK)")
-                                else:
-                                    print(
-                                        "❌ Integrity Check: HASH MISMATCH (Corruption detected)"
+                    while not stop_evt.is_set():
+                        if state == "WAIT_PREAMBLE":
+                            if len(buffer) >= 4096:
+                                chunk = np.array(buffer[:4096])
+                                if (
+                                    detect_frequency(
+                                        chunk,
+                                        [TONE_PREAMBLE],
+                                        tolerance=100,
+                                        min_threshold=0.15,
                                     )
-                                print("=" * 45)
-                        except Exception as e:
-                            with status_box:
-                                print(f"\n❌ Reconstruction Error: {e}")
-                    else:
+                                    is not None
+                                ):
+                                    state = "PREAMBLE_FOUND"
+                                    # Skip ahead past preamble
+                                    buffer = buffer[
+                                        int(
+                                            4096
+                                            + SAMPLE_RATE
+                                            * (0.3 + 0.05 - 0.05)
+                                        ) :
+                                    ]
+                                    with status_box:
+                                        print("⚡ Signal detected! Decoding...")
+                                else:
+                                    buffer = buffer[2048:]
+
+                        elif state == "PREAMBLE_FOUND":
+                            # Process symbol by symbol
+                            while len(buffer) >= SAMPLES_PER_SYMBOL:
+                                sym = np.array(buffer[:SAMPLES_PER_SYMBOL])
+                                buffer = buffer[SAMPLES_PER_SYMBOL:]
+
+                                # Check for end preamble
+                                if (
+                                    detect_frequency(
+                                        sym,
+                                        [TONE_PREAMBLE],
+                                        tolerance=100,
+                                        min_threshold=0.15,
+                                    )
+                                    is not None
+                                ):
+                                    state = "DONE"
+                                    stop_evt.set()
+                                    break
+
+                                l_idx = detect_frequency(
+                                    sym, LOW_FREQS, tolerance=50
+                                )
+                                h_idx = detect_frequency(
+                                    sym, HIGH_FREQS, tolerance=50
+                                )
+
+                                if l_idx is not None and h_idx is not None:
+                                    val = (h_idx << 4) | l_idx
+                                    received_bytes.append(val)
+
+                                    # Check if we have received the 4-byte header
+                                    if (
+                                        len(received_bytes) == 4
+                                        and expected_len is None
+                                    ):
+                                        expected_len = struct.unpack(
+                                            ">I", received_bytes[:4]
+                                        )[0]
+
+                        time.sleep(0.02)
+
+                # Process Decoded Data
+                if len(received_bytes) > 4 + 64:
+                    try:
+                        comp_len = struct.unpack(">I", received_bytes[:4])[0]
+                        comp_data = bytes(received_bytes[4 : 4 + comp_len])
+                        exp_hash = bytes(
+                            received_bytes[4 + comp_len : 4 + comp_len + 64]
+                        ).decode("ascii")
+
+                        decomp = gzip.decompress(comp_data)
+                        calc_hash = hashlib.sha256(decomp).hexdigest()
+
+                        save_path = save_input.value.strip()
+                        with open(save_path, "wb") as f:
+                            f.write(decomp)
+
                         with status_box:
-                            print(
-                                f"\n⚠️ Incomplete transfer: Received {len(rx_state['chunks'])}/{rx_state['total_chunks']} frames."
-                            )
+                            print("\n" + "=" * 45)
+                            print("🎉 File Received & Decoded Successfully!")
+                            print(f"💾 Saved to: {save_path}")
+                            print(f"🔑 Expected Hash: {exp_hash}")
+                            print(f"🔑 Received Hash: {calc_hash}")
+                            if calc_hash == exp_hash:
+                                print(
+                                    "✅ Integrity Check: 100% MATCH (No errors)"
+                                )
+                            else:
+                                print(
+                                    "❌ Integrity Check: HASH MISMATCH (Noise corruption)"
+                                )
+                            print("=" * 45)
+                    except Exception as e:
+                        with status_box:
+                            print(f"\n❌ Reconstruction Error: {e}")
+                else:
+                    with status_box:
+                        print(
+                            f"\n⚠️ Incomplete signal: Captured {len(received_bytes)} bytes."
+                        )
 
-            def listen_worker():
-                listen_for_payloads(
-                    rx_state["stop_evt"], on_frame, status_box
-                )
-
-            threading.Thread(target=listen_worker).start()
+            threading.Thread(target=rx_worker).start()
 
         def on_stop_clicked(_):
-            if rx_state["stop_evt"]:
-                rx_state["stop_evt"].set()
+            global active_stop_event
+            if active_stop_event:
+                active_stop_event.set()
             with status_box:
-                print("\n🛑 Listening stopped.")
+                print("\n🛑 Listening cancelled.")
 
         btn_check.on_click(on_check_sender_clicked)
         btn_receive.on_click(on_receive_clicked)
