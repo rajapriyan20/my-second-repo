@@ -1,41 +1,646 @@
-import streamlit as st
-import sqlite3
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Team Calendar</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --danger: #ef4444;
+      --raj-gold: #d97706;
+    }
 
-# 1. Initialize the SQLite database stored on the server's disk
-conn = sqlite3.connect("shared_notes.db", check_same_thread=False)
-cursor = conn.cursor()
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS notes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user TEXT,
-        content TEXT
-    )
-""")
-conn.commit()
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body { background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
-# 2. App User Interface
-st.title("Team Shared Notepad")
+    /* Top Bar */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      height: 64px;
+      padding: 0 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-shrink: 0;
+    }
+    .header-left, .header-center, .header-right { display: flex; align-items: center; gap: 0.75rem; }
+    .brand { font-size: 1.25rem; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 0.5rem; }
+    .brand span { color: var(--primary); }
 
-user_name = st.text_input("Your Name", placeholder="e.g., Alice")
-note_text = st.text_area("Write a Note", placeholder="Type your update here...")
+    /* Buttons & Inputs */
+    button {
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      padding: 0.45rem 0.85rem;
+      border-radius: 6px;
+      font-weight: 500;
+      font-size: 0.85rem;
+      color: var(--text);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.15s ease;
+    }
+    button:hover { background: #f1f5f9; }
+    button.btn-primary { background: var(--primary); color: white; border-color: var(--primary); }
+    button.btn-primary:hover { background: var(--primary-hover); }
+    button.btn-save { background: #059669; color: white; border-color: #059669; }
+    button.btn-save:hover { background: #047857; }
+    button.btn-auth { border-color: #cbd5e1; }
+    button.btn-auth.unlocked { background: #fef3c7; color: #92400e; border-color: #f59e0b; }
 
-if st.button("Save to Server"):
-    if user_name.strip() and note_text.strip():
-        cursor.execute("INSERT INTO notes (user, content) VALUES (?, ?)", (user_name, note_text))
-        conn.commit()
-        st.success("Saved to shared storage!")
-        st.rerun()
-    else:
-        st.warning("Please fill in both name and note.")
+    select, input[type="text"], input[type="date"], input[type="time"] {
+      padding: 0.45rem 0.65rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.85rem;
+      outline: none;
+      background: var(--surface);
+    }
+    select:focus, input:focus { border-color: var(--primary); }
 
-st.divider()
+    /* Calendar Controls */
+    .nav-group { display: flex; align-items: center; gap: 0.25rem; }
+    .current-label { font-size: 1.15rem; font-weight: 600; min-width: 180px; text-align: center; }
 
-# 3. Read and display live data shared across all users
-st.subheader("All Shared Notes")
-records = cursor.execute("SELECT user, content FROM notes ORDER BY id DESC").fetchall()
+    /* Main Work Area */
+    main { flex: 1; overflow: hidden; display: flex; flex-direction: column; padding: 1rem; }
+    .calendar-container {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
 
-for author, text in records:
-    st.info(f"**{author}:** {text}")
+    /* Month View Grid */
+    .weekday-header {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      border-bottom: 1px solid var(--border);
+      background: #f8fafc;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .weekday-header div { padding: 0.6rem; text-align: center; }
+    .month-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      grid-template-rows: repeat(5, 1fr);
+      flex: 1;
+      overflow-y: auto;
+    }
+    .day-cell {
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 0.35rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      overflow: hidden;
+      background: var(--surface);
+      min-height: 95px;
+    }
+    .day-cell:nth-child(7n) { border-right: none; }
+    .day-cell.other-month { background: #fcfcfd; color: var(--text-muted); }
+    .day-cell.today { background: #f0fdf4; }
+    .day-number { font-size: 0.8rem; font-weight: 600; margin-bottom: 2px; }
 
+    /* Event Badges (Stacking Cards) */
+    .event-chip {
+      font-size: 0.72rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #ffffff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+      border-left: 3px solid rgba(0,0,0,0.25);
+    }
+    .event-chip.private-badge { border: 1px dashed #d97706; }
 
-streamlit run app.py --server.port 8501 --server.address 0.0.0.0
+    /* Week View */
+    .week-view { display: grid; grid-template-columns: repeat(7, 1fr); flex: 1; overflow-y: auto; }
+    .week-column { border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+    .week-column:last-child { border-right: none; }
+    .week-header { padding: 0.5rem; text-align: center; border-bottom: 1px solid var(--border); background: #f8fafc; font-weight: 600; font-size: 0.85rem; }
+    .week-events { padding: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem; flex: 1; overflow-y: auto; }
+
+    /* Agenda View */
+    .agenda-view { flex: 1; overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
+    .agenda-day-group { display: flex; flex-direction: column; gap: 0.5rem; }
+    .agenda-date-title { font-weight: 700; font-size: 0.95rem; color: var(--text-muted); border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; }
+    .agenda-item { background: #fff; border: 1px solid var(--border); padding: 0.75rem 1rem; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; }
+
+    /* Modal Sheet */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: none; align-items: center; justify-content: center; z-index: 1000; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: var(--surface); border-radius: 8px; width: 440px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); overflow: hidden; }
+    .modal-header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+    .modal-body { padding: 1.25rem; display: flex; flex-direction: column; gap: 0.85rem; }
+    .modal-footer { padding: 0.85rem 1.25rem; background: #f8fafc; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 0.5rem; }
+    .form-group { display: flex; flex-direction: column; gap: 0.35rem; }
+    .form-group label { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    .private-toggle-wrap { display: flex; align-items: center; gap: 0.5rem; background: #fffbeb; padding: 0.6rem; border-radius: 6px; border: 1px solid #fde68a; }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <header>
+    <div class="header-left">
+      <div class="brand">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <span>Team</span>Calendar
+      </div>
+      <div class="nav-group">
+        <button onclick="navToday()">Today</button>
+        <button onclick="navStep(-1)">&larr;</button>
+        <button onclick="navStep(1)">&rarr;</button>
+      </div>
+      <div class="current-label" id="currentPeriodLabel"></div>
+    </div>
+
+    <div class="header-center">
+      <select id="viewSelect" onchange="changeView(this.value)">
+        <option value="month">Month View</option>
+        <option value="week">Week View</option>
+        <option value="agenda">Agenda View</option>
+      </select>
+      <select id="tagFilter" onchange="applyFilter(this.value)">
+        <option value="ALL">All Categories</option>
+      </select>
+    </div>
+
+    <div class="header-right">
+      <button class="btn-primary" onclick="openEventModal()">+ Event</button>
+      <button id="authBtn" class="btn-auth" onclick="handleAuthClick()">
+        <span id="authIcon">🔑</span> <span id="authLabel">Rajapriyan PIN</span>
+      </button>
+      <button class="btn-save" onclick="saveAndDownloadSelf()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Save & Download
+      </button>
+    </div>
+  </header>
+
+  <!-- Calendar Content View -->
+  <main>
+    <div class="calendar-container" id="calendarContainer"></div>
+  </main>
+
+  <!-- Event Entry Modal -->
+  <div class="modal-overlay" id="eventModal">
+    <div class="modal">
+      <div class="modal-header">
+        <span id="eventModalTitle">Create Event</span>
+        <button onclick="closeEventModal()" style="border:none; background:transparent; font-size:1.2rem;">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="eventId">
+        <div class="form-group">
+          <label>TITLE</label>
+          <input type="text" id="eventTitle" placeholder="Project sync, Release..." required>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>DATE</label>
+            <input type="date" id="eventDate" required>
+          </div>
+          <div class="form-group">
+            <label>TIME</label>
+            <input type="time" id="eventTime">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>CATEGORY / TAG</label>
+            <input type="text" id="eventCategory" placeholder="e.g. Planning, Engineering">
+          </div>
+          <div class="form-group">
+            <label>COLOR</label>
+            <input type="color" id="eventColor" value="#2563eb" style="height:36px; width:100%; padding:2px; cursor:pointer;">
+          </div>
+        </div>
+
+        <div class="private-toggle-wrap" id="privateToggleContainer" style="display: none;">
+          <input type="checkbox" id="eventPrivate">
+          <label for="eventPrivate" style="font-size:0.8rem; font-weight:600; color:#92400e; cursor:pointer;">
+            🔒 Mark as Private (Only visible to Rajapriyan)
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="deleteEventBtn" style="color:var(--danger); border-color:var(--danger); display:none;" onclick="deleteCurrentEvent()">Delete</button>
+        <button onclick="closeEventModal()">Cancel</button>
+        <button class="btn-primary" onclick="saveEvent()">Save Event</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Authentication PIN Modal -->
+  <div class="modal-overlay" id="pinModal">
+    <div class="modal" style="width:320px;">
+      <div class="modal-header">Enter Rajapriyan PIN</div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>4-DIGIT PIN</label>
+          <input type="password" id="pinInput" placeholder="Enter PIN" style="font-size:1.25rem; letter-spacing:0.25rem; text-align:center;">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="closePinModal()">Cancel</button>
+        <button class="btn-primary" onclick="verifyPin()">Unlock</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PERSISTENT CALENDAR DATA CONTAINER -->
+  <script id="calendar-data" type="application/json">
+  {
+    "events": [
+      { "id": "1", "title": "Sprint Review", "date": "2026-09-11", "time": "14:00", "category": "Scrum", "color": "#2563eb", "isPrivate": false },
+      { "id": "2", "title": "1-on-1 Sync", "date": "2026-09-11", "time": "16:30", "category": "HR", "color": "#059669", "isPrivate": false },
+      { "id": "3", "title": "Personal Banking Review", "date": "2026-09-15", "time": "11:00", "category": "Private", "color": "#d97706", "isPrivate": true }
+    ]
+  }
+  </script>
+
+  <script>
+    // System State
+    const RAJ_PIN = "5566";
+    let isRajapriyanUnlocked = false;
+    let currentDate = new Date();
+    let currentView = "month";
+    let selectedFilter = "ALL";
+    let appData = { events: [] };
+
+    // Initialization
+    window.addEventListener('DOMContentLoaded', () => {
+      try {
+        const raw = document.getElementById('calendar-data').textContent;
+        appData = JSON.parse(raw);
+      } catch (e) {
+        appData = { events: [] };
+      }
+      updateCategoryFilters();
+      renderCalendar();
+    });
+
+    // Navigation & Views
+    function navToday() { currentDate = new Date(); renderCalendar(); }
+    function navStep(dir) {
+      if (currentView === 'month') {
+        currentDate.setMonth(currentDate.getMonth() + dir);
+      } else if (currentView === 'week') {
+        currentDate.setDate(currentDate.getDate() + (dir * 7));
+      } else {
+        currentDate.setMonth(currentDate.getMonth() + dir);
+      }
+      renderCalendar();
+    }
+    function changeView(view) { currentView = view; renderCalendar(); }
+    function applyFilter(cat) { selectedFilter = cat; renderCalendar(); }
+
+    // PIN Authentication
+    function handleAuthClick() {
+      if (isRajapriyanUnlocked) {
+        // Lock session
+        isRajapriyanUnlocked = false;
+        updateAuthDisplay();
+        renderCalendar();
+      } else {
+        document.getElementById('pinInput').value = "";
+        document.getElementById('pinModal').classList.add('open');
+        document.getElementById('pinInput').focus();
+      }
+    }
+    function verifyPin() {
+      const entered = document.getElementById('pinInput').value.trim();
+      if (entered === RAJ_PIN) {
+        isRajapriyanUnlocked = true;
+        closePinModal();
+        updateAuthDisplay();
+        renderCalendar();
+      } else {
+        alert("Incorrect PIN.");
+      }
+    }
+    function closePinModal() { document.getElementById('pinModal').classList.remove('open'); }
+    function updateAuthDisplay() {
+      const btn = document.getElementById('authBtn');
+      const label = document.getElementById('authLabel');
+      if (isRajapriyanUnlocked) {
+        btn.classList.add('unlocked');
+        label.textContent = "Rajapriyan (Unlocked)";
+      } else {
+        btn.classList.remove('unlocked');
+        label.textContent = "Rajapriyan PIN";
+      }
+    }
+
+    // Rendering Engine
+    function renderCalendar() {
+      const container = document.getElementById('calendarContainer');
+      container.innerHTML = "";
+      updatePeriodLabel();
+
+      // Privacy Filter Rule: Private events stay invisible unless Rajapriyan is unlocked
+      const visibleEvents = appData.events.filter(e => {
+        if (e.isPrivate && !isRajapriyanUnlocked) return false;
+        if (selectedFilter !== "ALL" && e.category !== selectedFilter) return false;
+        return true;
+      });
+
+      if (currentView === 'month') renderMonthView(container, visibleEvents);
+      else if (currentView === 'week') renderWeekView(container, visibleEvents);
+      else if (currentView === 'agenda') renderAgendaView(container, visibleEvents);
+    }
+
+    function updatePeriodLabel() {
+      const lbl = document.getElementById('currentPeriodLabel');
+      const opts = { month: 'long', year: 'numeric' };
+      if (currentView === 'month' || currentView === 'agenda') {
+        lbl.textContent = currentDate.toLocaleDateString(undefined, opts);
+      } else if (currentView === 'week') {
+        const start = getStartOfWeek(new Date(currentDate));
+        const end = new Date(start);
+        end.setDate(end.getDate() + 6);
+        lbl.textContent = `${start.getDate()} ${start.toLocaleDateString(undefined, {month:'short'})} - ${end.getDate()} ${end.toLocaleDateString(undefined, {month:'short', year:'numeric'})}`;
+      }
+    }
+
+    // Month Layout
+    function renderMonthView(container, events) {
+      const header = document.createElement('div');
+      header.className = 'weekday-header';
+      ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(d => {
+        header.innerHTML += `<div>${d}</div>`;
+      });
+      container.appendChild(header);
+
+      const grid = document.createElement('div');
+      grid.className = 'month-grid';
+
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      // Previous month filler
+      const prevMonthDays = new Date(year, month, 0).getDate();
+      for (let i = firstDay - 1; i >= 0; i--) {
+        grid.appendChild(createDayCell(prevMonthDays - i, true));
+      }
+
+      // Current month days
+      const today = new Date();
+      for (let d = 1; d <= daysInMonth; d++) {
+        const isToday = (today.getFullYear() === year && today.getMonth() === month && today.getDate() === d);
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const dayEvents = events.filter(e => e.date === dateStr);
+        grid.appendChild(createDayCell(d, false, isToday, dayEvents));
+      }
+
+      // Next month filler
+      const totalCells = firstDay + daysInMonth;
+      const nextDays = (totalCells > 35) ? 42 - totalCells : 35 - totalCells;
+      for (let i = 1; i <= nextDays; i++) {
+        grid.appendChild(createDayCell(i, true));
+      }
+
+      container.appendChild(grid);
+    }
+
+    function createDayCell(dayNum, isOtherMonth, isToday = false, dayEvents = []) {
+      const cell = document.createElement('div');
+      cell.className = `day-cell ${isOtherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''}`;
+      cell.innerHTML = `<div class="day-number">${dayNum}</div>`;
+      
+      dayEvents.forEach(evt => {
+        const chip = document.createElement('div');
+        chip.className = `event-chip ${evt.isPrivate ? 'private-badge' : ''}`;
+        chip.style.backgroundColor = evt.color || 'var(--primary)';
+        chip.innerHTML = `${evt.isPrivate ? '🔒 ' : ''}${evt.time ? evt.time + ' ' : ''}${evt.title}`;
+        chip.onclick = (e) => { e.stopPropagation(); editEvent(evt.id); };
+        cell.appendChild(chip);
+      });
+      return cell;
+    }
+
+    // Week Layout
+    function getStartOfWeek(d) {
+      const date = new Date(d);
+      const day = date.getDay();
+      const diff = date.getDate() - day;
+      return new Date(date.setDate(diff));
+    }
+
+    function renderWeekView(container, events) {
+      const weekWrap = document.createElement('div');
+      weekWrap.className = 'week-view';
+      const start = getStartOfWeek(new Date(currentDate));
+
+      for (let i = 0; i < 7; i++) {
+        const cur = new Date(start);
+        cur.setDate(start.getDate() + i);
+        const dateStr = cur.toISOString().split('T')[0];
+        const dayEvents = events.filter(e => e.date === dateStr);
+
+        const col = document.createElement('div');
+        col.className = 'week-column';
+        col.innerHTML = `
+          <div class="week-header">
+            ${cur.toLocaleDateString(undefined, { weekday: 'short' })} ${cur.getDate()}
+          </div>
+          <div class="week-events"></div>
+        `;
+        const list = col.querySelector('.week-events');
+        dayEvents.forEach(evt => {
+          const chip = document.createElement('div');
+          chip.className = `event-chip ${evt.isPrivate ? 'private-badge' : ''}`;
+          chip.style.backgroundColor = evt.color || 'var(--primary)';
+          chip.innerHTML = `${evt.isPrivate ? '🔒 ' : ''}<b>${evt.time || ''}</b> ${evt.title}`;
+          chip.onclick = () => editEvent(evt.id);
+          list.appendChild(chip);
+        });
+        weekWrap.appendChild(col);
+      }
+      container.appendChild(weekWrap);
+    }
+
+    // Agenda Layout
+    function renderAgendaView(container, events) {
+      const wrap = document.createElement('div');
+      wrap.className = 'agenda-view';
+
+      const sorted = [...events].sort((a,b) => new Date(a.date + ' ' + (a.time||'00:00')) - new Date(b.date + ' ' + (b.time||'00:00')));
+      if (sorted.length === 0) {
+        wrap.innerHTML = `<div style="text-align:center; color:var(--text-muted); margin-top:3rem;">No events scheduled</div>`;
+        container.appendChild(wrap);
+        return;
+      }
+
+      let currentDateGroup = "";
+      let currentGroupDiv = null;
+
+      sorted.forEach(evt => {
+        if (evt.date !== currentDateGroup) {
+          currentDateGroup = evt.date;
+          const group = document.createElement('div');
+          group.className = 'agenda-day-group';
+          group.innerHTML = `<div class="agenda-date-title">${new Date(evt.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}</div>`;
+          wrap.appendChild(group);
+          currentGroupDiv = group;
+        }
+
+        const item = document.createElement('div');
+        item.className = 'agenda-item';
+        item.innerHTML = `
+          <div style="display:flex; align-items:center; gap:0.75rem;">
+            <div style="width:12px; height:12px; border-radius:3px; background:${evt.color};"></div>
+            <div>
+              <strong>${evt.title}</strong> ${evt.isPrivate ? '<span style="color:#d97706; font-size:0.75rem; font-weight:600;">🔒 Private</span>' : ''}
+              <div style="font-size:0.75rem; color:var(--text-muted);">${evt.category ? '[' + evt.category + ']' : ''}</div>
+            </div>
+          </div>
+          <div style="font-size:0.85rem; font-weight:500;">${evt.time || 'All Day'}</div>
+        `;
+        item.onclick = () => editEvent(evt.id);
+        currentGroupDiv.appendChild(item);
+      });
+
+      container.appendChild(wrap);
+    }
+
+    // Modals & Event Actions
+    function openEventModal() {
+      document.getElementById('eventId').value = "";
+      document.getElementById('eventTitle').value = "";
+      document.getElementById('eventDate').value = new Date().toISOString().split('T')[0];
+      document.getElementById('eventTime').value = "10:00";
+      document.getElementById('eventCategory').value = "";
+      document.getElementById('eventColor').value = "#2563eb";
+      document.getElementById('eventPrivate').checked = false;
+      document.getElementById('deleteEventBtn').style.display = 'none';
+      document.getElementById('eventModalTitle').textContent = "Create Event";
+
+      // Show private toggle only if Rajapriyan access is unlocked
+      document.getElementById('privateToggleContainer').style.display = isRajapriyanUnlocked ? 'flex' : 'none';
+      document.getElementById('eventModal').classList.add('open');
+    }
+
+    function editEvent(id) {
+      const evt = appData.events.find(e => e.id === id);
+      if (!evt) return;
+
+      document.getElementById('eventId').value = evt.id;
+      document.getElementById('eventTitle').value = evt.title;
+      document.getElementById('eventDate').value = evt.date;
+      document.getElementById('eventTime').value = evt.time || "";
+      document.getElementById('eventCategory').value = evt.category || "";
+      document.getElementById('eventColor').value = evt.color || "#2563eb";
+      document.getElementById('eventPrivate').checked = !!evt.isPrivate;
+      document.getElementById('deleteEventBtn').style.display = 'block';
+      document.getElementById('eventModalTitle').textContent = "Edit Event";
+
+      document.getElementById('privateToggleContainer').style.display = isRajapriyanUnlocked ? 'flex' : 'none';
+      document.getElementById('eventModal').classList.add('open');
+    }
+
+    function closeEventModal() { document.getElementById('eventModal').classList.remove('open'); }
+
+    function saveEvent() {
+      const id = document.getElementById('eventId').value;
+      const title = document.getElementById('eventTitle').value.trim();
+      const date = document.getElementById('eventDate').value;
+      const time = document.getElementById('eventTime').value;
+      const category = document.getElementById('eventCategory').value.trim();
+      const color = document.getElementById('eventColor').value;
+      const isPrivate = isRajapriyanUnlocked && document.getElementById('eventPrivate').checked;
+
+      if (!title || !date) { alert("Title and Date are required"); return; }
+
+      if (id) {
+        const item = appData.events.find(e => e.id === id);
+        if (item) Object.assign(item, { title, date, time, category, color, isPrivate });
+      } else {
+        appData.events.push({ id: Date.now().toString(), title, date, time, category, color, isPrivate });
+      }
+
+      updateCategoryFilters();
+      closeEventModal();
+      renderCalendar();
+    }
+
+    function deleteCurrentEvent() {
+      const id = document.getElementById('eventId').value;
+      appData.events = appData.events.filter(e => e.id !== id);
+      updateCategoryFilters();
+      closeEventModal();
+      renderCalendar();
+    }
+
+    function updateCategoryFilters() {
+      const filterSelect = document.getElementById('tagFilter');
+      const cats = [...new Set(appData.events.map(e => e.category).filter(Boolean))];
+      filterSelect.innerHTML = `<option value="ALL">All Categories</option>`;
+      cats.forEach(c => {
+        filterSelect.innerHTML += `<option value="${c}">${c}</option>`;
+      });
+      filterSelect.value = selectedFilter;
+    }
+
+    // Self-Saving File Engine
+    function saveAndDownloadSelf() {
+      // 1. Lock auth before export to keep private items safe in downloaded state
+      const wasUnlocked = isRajapriyanUnlocked;
+      isRajapriyanUnlocked = false;
+      updateAuthDisplay();
+      renderCalendar();
+
+      // 2. Serialize current event state into data script tag
+      document.getElementById('calendar-data').textContent = JSON.stringify(appData, null, 2);
+
+      // 3. Serialize DOM into full valid HTML document
+      const htmlPayload = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+
+      // 4. Create and trigger file download
+      const blob = new Blob([htmlPayload], { type: 'text/html' });
+      const downloadLink = document.createElement('a');
+      downloadLink.href = URL.createObjectURL(blob);
+      downloadLink.download = 'team_calendar.html';
+      downloadLink.click();
+
+      // Restore session state for the active tab
+      if (wasUnlocked) {
+        isRajapriyanUnlocked = true;
+        updateAuthDisplay();
+        renderCalendar();
+      }
+    }
+  </script>
+</body>
+</html>
