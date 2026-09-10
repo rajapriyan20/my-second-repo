@@ -1,0 +1,31 @@
+window.calendarData = {
+  "events": [
+    {
+      "id": "1",
+      "title": "Sprint Review",
+      "date": "2026-09-11",
+      "time": "14:00",
+      "category": "Scrum",
+      "color": "#2563eb",
+      "isPrivate": false
+    },
+    {
+      "id": "2",
+      "title": "Architecture Sync",
+      "date": "2026-09-14",
+      "time": "10:30",
+      "category": "Engineering",
+      "color": "#059669",
+      "isPrivate": false
+    },
+    {
+      "id": "3",
+      "title": "One-on-One Catchup",
+      "date": "2026-09-16",
+      "time": "15:00",
+      "category": "Confidential",
+      "color": "#d97706",
+      "isPrivate": true
+    }
+  ]
+};
