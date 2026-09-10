@@ -1,0 +1,41 @@
+import streamlit as st
+import sqlite3
+
+# 1. Initialize the SQLite database stored on the server's disk
+conn = sqlite3.connect("shared_notes.db", check_same_thread=False)
+cursor = conn.cursor()
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user TEXT,
+        content TEXT
+    )
+""")
+conn.commit()
+
+# 2. App User Interface
+st.title("Team Shared Notepad")
+
+user_name = st.text_input("Your Name", placeholder="e.g., Alice")
+note_text = st.text_area("Write a Note", placeholder="Type your update here...")
+
+if st.button("Save to Server"):
+    if user_name.strip() and note_text.strip():
+        cursor.execute("INSERT INTO notes (user, content) VALUES (?, ?)", (user_name, note_text))
+        conn.commit()
+        st.success("Saved to shared storage!")
+        st.rerun()
+    else:
+        st.warning("Please fill in both name and note.")
+
+st.divider()
+
+# 3. Read and display live data shared across all users
+st.subheader("All Shared Notes")
+records = cursor.execute("SELECT user, content FROM notes ORDER BY id DESC").fetchall()
+
+for author, text in records:
+    st.info(f"**{author}:** {text}")
+
+
+streamlit run app.py --server.port 8501 --server.address 0.0.0.0
