@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Team Calendar</title>
+  <!-- 1. Decoupled Data Loader -->
+  <script src="data.js"></script>
+
   <style>
     :root {
       --primary: #2563eb;
@@ -14,41 +17,44 @@
       --text: #0f172a;
       --text-muted: #64748b;
       --danger: #ef4444;
-      --raj-gold: #d97706;
+      
+      /* Distinct contrast backgrounds */
+      --weekend-bg: #f1f5f9;
+      --other-month-bg: #e2e8f0;
+      --other-month-weekend: #cbd5e1;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
     body { background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
-    /* Top Bar */
+    /* Top Navigation */
     header {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      height: 64px;
-      padding: 0 1.5rem;
+      height: 60px;
+      padding: 0 1.25rem;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 1rem;
       flex-shrink: 0;
     }
-    .header-left, .header-center, .header-right { display: flex; align-items: center; gap: 0.75rem; }
-    .brand { font-size: 1.25rem; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 0.5rem; }
+    .header-left, .header-center, .header-right { display: flex; align-items: center; gap: 0.65rem; }
+    .brand { font-size: 1.15rem; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 0.4rem; }
     .brand span { color: var(--primary); }
 
-    /* Buttons & Inputs */
     button {
       cursor: pointer;
       border: 1px solid var(--border);
       background: var(--surface);
-      padding: 0.45rem 0.85rem;
+      padding: 0.45rem 0.8rem;
       border-radius: 6px;
       font-weight: 500;
       font-size: 0.85rem;
       color: var(--text);
       display: inline-flex;
       align-items: center;
-      gap: 0.4rem;
+      gap: 0.35rem;
       transition: all 0.15s ease;
     }
     button:hover { background: #f1f5f9; }
@@ -56,25 +62,34 @@
     button.btn-primary:hover { background: var(--primary-hover); }
     button.btn-save { background: #059669; color: white; border-color: #059669; }
     button.btn-save:hover { background: #047857; }
-    button.btn-auth { border-color: #cbd5e1; }
-    button.btn-auth.unlocked { background: #fef3c7; color: #92400e; border-color: #f59e0b; }
+    
+    /* Icon-Only Key Button */
+    button.btn-key-only {
+      padding: 0.45rem 0.65rem;
+      font-size: 1rem;
+      line-height: 1;
+      border-color: #cbd5e1;
+    }
+    button.btn-key-only.unlocked {
+      background: #fef3c7;
+      border-color: #f59e0b;
+      box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+    }
 
     select, input[type="text"], input[type="date"], input[type="time"] {
-      padding: 0.45rem 0.65rem;
+      padding: 0.42rem 0.6rem;
       border: 1px solid var(--border);
       border-radius: 6px;
       font-size: 0.85rem;
-      outline: none;
       background: var(--surface);
+      outline: none;
     }
     select:focus, input:focus { border-color: var(--primary); }
 
-    /* Calendar Controls */
-    .nav-group { display: flex; align-items: center; gap: 0.25rem; }
-    .current-label { font-size: 1.15rem; font-weight: 600; min-width: 180px; text-align: center; }
+    .current-label { font-size: 1.1rem; font-weight: 600; min-width: 170px; text-align: center; }
 
-    /* Main Work Area */
-    main { flex: 1; overflow: hidden; display: flex; flex-direction: column; padding: 1rem; }
+    /* Work Canvas */
+    main { flex: 1; overflow: hidden; display: flex; flex-direction: column; padding: 0.85rem; }
     .calendar-container {
       flex: 1;
       background: var(--surface);
@@ -83,7 +98,7 @@
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     }
 
     /* Month View Grid */
@@ -93,12 +108,13 @@
       border-bottom: 1px solid var(--border);
       background: #f8fafc;
       font-size: 0.75rem;
-      font-weight: 600;
+      font-weight: 700;
       color: var(--text-muted);
       text-transform: uppercase;
-      letter-spacing: 0.05em;
     }
-    .weekday-header div { padding: 0.6rem; text-align: center; }
+    .weekday-header div { padding: 0.5rem; text-align: center; }
+    .weekday-header div.weekend-col { background: #f1f5f9; color: #475569; }
+
     .month-grid {
       display: grid;
       grid-template-columns: repeat(7, 1fr);
@@ -109,23 +125,33 @@
     .day-cell {
       border-right: 1px solid var(--border);
       border-bottom: 1px solid var(--border);
-      padding: 0.35rem;
+      padding: 0.3rem 0.35rem;
       display: flex;
       flex-direction: column;
       gap: 0.25rem;
       overflow: hidden;
       background: var(--surface);
-      min-height: 95px;
+      min-height: 85px;
     }
     .day-cell:nth-child(7n) { border-right: none; }
-    .day-cell.other-month { background: #fcfcfd; color: var(--text-muted); }
-    .day-cell.today { background: #f0fdf4; }
-    .day-number { font-size: 0.8rem; font-weight: 600; margin-bottom: 2px; }
 
-    /* Event Badges (Stacking Cards) */
+    /* Shading Styles */
+    .day-cell.weekend { background: var(--weekend-bg); }
+    .day-cell.other-month {
+      background: var(--other-month-bg) !important;
+      color: #64748b;
+    }
+    .day-cell.other-month.weekend {
+      background: var(--other-month-weekend) !important;
+      color: #475569;
+    }
+    .day-cell.today { outline: 2px solid var(--primary); outline-offset: -2px; }
+    .day-number { font-size: 0.8rem; font-weight: 600; margin-bottom: 1px; }
+
+    /* Stacking Chips */
     .event-chip {
       font-size: 0.72rem;
-      padding: 2px 6px;
+      padding: 2px 5px;
       border-radius: 4px;
       color: #ffffff;
       white-space: nowrap;
@@ -135,8 +161,8 @@
       display: flex;
       align-items: center;
       gap: 4px;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-      border-left: 3px solid rgba(0,0,0,0.25);
+      border-left: 3px solid rgba(0,0,0,0.3);
+      font-weight: 500;
     }
     .event-chip.private-badge { border: 1px dashed #d97706; }
 
@@ -144,38 +170,40 @@
     .week-view { display: grid; grid-template-columns: repeat(7, 1fr); flex: 1; overflow-y: auto; }
     .week-column { border-right: 1px solid var(--border); display: flex; flex-direction: column; }
     .week-column:last-child { border-right: none; }
+    .week-column.weekend { background: var(--weekend-bg); }
     .week-header { padding: 0.5rem; text-align: center; border-bottom: 1px solid var(--border); background: #f8fafc; font-weight: 600; font-size: 0.85rem; }
-    .week-events { padding: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem; flex: 1; overflow-y: auto; }
+    .week-header.weekend { background: #f1f5f9; color: #475569; }
+    .week-events { padding: 0.4rem; display: flex; flex-direction: column; gap: 0.35rem; flex: 1; overflow-y: auto; }
 
     /* Agenda View */
-    .agenda-view { flex: 1; overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
-    .agenda-day-group { display: flex; flex-direction: column; gap: 0.5rem; }
-    .agenda-date-title { font-weight: 700; font-size: 0.95rem; color: var(--text-muted); border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; }
-    .agenda-item { background: #fff; border: 1px solid var(--border); padding: 0.75rem 1rem; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; }
+    .agenda-view { flex: 1; overflow-y: auto; padding: 1.25rem; display: flex; flex-direction: column; gap: 0.85rem; }
+    .agenda-day-group { display: flex; flex-direction: column; gap: 0.4rem; }
+    .agenda-date-title { font-weight: 700; font-size: 0.9rem; color: var(--text-muted); border-bottom: 1px solid var(--border); padding-bottom: 0.2rem; }
+    .agenda-item { background: #fff; border: 1px solid var(--border); padding: 0.65rem 0.85rem; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
+    .agenda-item:hover { border-color: var(--primary); }
 
-    /* Modal Sheet */
+    /* Modal */
     .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: none; align-items: center; justify-content: center; z-index: 1000; }
     .modal-overlay.open { display: flex; }
-    .modal { background: var(--surface); border-radius: 8px; width: 440px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); overflow: hidden; }
-    .modal-header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
-    .modal-body { padding: 1.25rem; display: flex; flex-direction: column; gap: 0.85rem; }
-    .modal-footer { padding: 0.85rem 1.25rem; background: #f8fafc; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 0.5rem; }
-    .form-group { display: flex; flex-direction: column; gap: 0.35rem; }
-    .form-group label { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); }
-    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
-    .private-toggle-wrap { display: flex; align-items: center; gap: 0.5rem; background: #fffbeb; padding: 0.6rem; border-radius: 6px; border: 1px solid #fde68a; }
+    .modal { background: var(--surface); border-radius: 8px; width: 420px; box-shadow: 0 15px 20px -5px rgba(0,0,0,0.1); overflow: hidden; }
+    .modal-header { padding: 0.85rem 1.15rem; border-bottom: 1px solid var(--border); font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+    .modal-body { padding: 1.15rem; display: flex; flex-direction: column; gap: 0.75rem; }
+    .modal-footer { padding: 0.75rem 1.15rem; background: #f8fafc; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 0.5rem; }
+    .form-group { display: flex; flex-direction: column; gap: 0.3rem; }
+    .form-group label { font-size: 0.72rem; font-weight: 700; color: var(--text-muted); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem; }
+    .private-toggle-wrap { display: flex; align-items: center; gap: 0.5rem; background: #fffbeb; padding: 0.55rem; border-radius: 6px; border: 1px solid #fde68a; }
   </style>
 </head>
 <body>
 
-  <!-- Top Navigation Bar -->
   <header>
     <div class="header-left">
       <div class="brand">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
         <span>Team</span>Calendar
       </div>
-      <div class="nav-group">
+      <div style="display: flex; gap: 0.2rem;">
         <button onclick="navToday()">Today</button>
         <button onclick="navStep(-1)">&larr;</button>
         <button onclick="navStep(1)">&rarr;</button>
@@ -196,17 +224,18 @@
 
     <div class="header-right">
       <button class="btn-primary" onclick="openEventModal()">+ Event</button>
-      <button id="authBtn" class="btn-auth" onclick="handleAuthClick()">
-        <span id="authIcon">🔑</span> <span id="authLabel">Rajapriyan PIN</span>
-      </button>
-      <button class="btn-save" onclick="saveAndDownloadSelf()">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Save & Download
+      
+      <!-- Key-Only Button -->
+      <button id="authBtn" class="btn-key-only" onclick="handleAuthClick()" title="Rajapriyan Access">🔑</button>
+
+      <!-- Downloads only data.js -->
+      <button class="btn-save" onclick="saveAndDownloadData()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Save Data
       </button>
     </div>
   </header>
 
-  <!-- Calendar Content View -->
   <main>
     <div class="calendar-container" id="calendarContainer"></div>
   </main>
@@ -222,7 +251,7 @@
         <input type="hidden" id="eventId">
         <div class="form-group">
           <label>TITLE</label>
-          <input type="text" id="eventTitle" placeholder="Project sync, Release..." required>
+          <input type="text" id="eventTitle" placeholder="Task or Meeting" required>
         </div>
         <div class="form-row">
           <div class="form-group">
@@ -236,18 +265,18 @@
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>CATEGORY / TAG</label>
-            <input type="text" id="eventCategory" placeholder="e.g. Planning, Engineering">
+            <label>CATEGORY</label>
+            <input type="text" id="eventCategory" placeholder="e.g. Planning">
           </div>
           <div class="form-group">
             <label>COLOR</label>
-            <input type="color" id="eventColor" value="#2563eb" style="height:36px; width:100%; padding:2px; cursor:pointer;">
+            <input type="color" id="eventColor" value="#2563eb" style="height:35px; width:100%; padding:2px; cursor:pointer;">
           </div>
         </div>
 
         <div class="private-toggle-wrap" id="privateToggleContainer" style="display: none;">
           <input type="checkbox" id="eventPrivate">
-          <label for="eventPrivate" style="font-size:0.8rem; font-weight:600; color:#92400e; cursor:pointer;">
+          <label for="eventPrivate" style="font-size:0.75rem; font-weight:600; color:#92400e; cursor:pointer;">
             🔒 Mark as Private (Only visible to Rajapriyan)
           </label>
         </div>
@@ -260,14 +289,13 @@
     </div>
   </div>
 
-  <!-- Authentication PIN Modal -->
+  <!-- PIN Modal -->
   <div class="modal-overlay" id="pinModal">
-    <div class="modal" style="width:320px;">
-      <div class="modal-header">Enter Rajapriyan PIN</div>
+    <div class="modal" style="width:300px;">
+      <div class="modal-header">Enter PIN</div>
       <div class="modal-body">
         <div class="form-group">
-          <label>4-DIGIT PIN</label>
-          <input type="password" id="pinInput" placeholder="Enter PIN" style="font-size:1.25rem; letter-spacing:0.25rem; text-align:center;">
+          <input type="password" id="pinInput" placeholder="PIN" style="font-size:1.25rem; letter-spacing:0.25rem; text-align:center;">
         </div>
       </div>
       <div class="modal-footer">
@@ -277,59 +305,35 @@
     </div>
   </div>
 
-  <!-- PERSISTENT CALENDAR DATA CONTAINER -->
-  <script id="calendar-data" type="application/json">
-  {
-    "events": [
-      { "id": "1", "title": "Sprint Review", "date": "2026-09-11", "time": "14:00", "category": "Scrum", "color": "#2563eb", "isPrivate": false },
-      { "id": "2", "title": "1-on-1 Sync", "date": "2026-09-11", "time": "16:30", "category": "HR", "color": "#059669", "isPrivate": false },
-      { "id": "3", "title": "Personal Banking Review", "date": "2026-09-15", "time": "11:00", "category": "Private", "color": "#d97706", "isPrivate": true }
-    ]
-  }
-  </script>
-
   <script>
-    // System State
     const RAJ_PIN = "5566";
     let isRajapriyanUnlocked = false;
     let currentDate = new Date();
     let currentView = "month";
     let selectedFilter = "ALL";
-    let appData = { events: [] };
 
-    // Initialization
+    // Load from data.js or initialize fallback
+    let appData = (typeof window.calendarData !== 'undefined') ? window.calendarData : { events: [] };
+
     window.addEventListener('DOMContentLoaded', () => {
-      try {
-        const raw = document.getElementById('calendar-data').textContent;
-        appData = JSON.parse(raw);
-      } catch (e) {
-        appData = { events: [] };
-      }
       updateCategoryFilters();
       renderCalendar();
     });
 
-    // Navigation & Views
     function navToday() { currentDate = new Date(); renderCalendar(); }
     function navStep(dir) {
-      if (currentView === 'month') {
-        currentDate.setMonth(currentDate.getMonth() + dir);
-      } else if (currentView === 'week') {
-        currentDate.setDate(currentDate.getDate() + (dir * 7));
-      } else {
-        currentDate.setMonth(currentDate.getMonth() + dir);
-      }
+      if (currentView === 'month') currentDate.setMonth(currentDate.getMonth() + dir);
+      else if (currentView === 'week') currentDate.setDate(currentDate.getDate() + (dir * 7));
+      else currentDate.setMonth(currentDate.getMonth() + dir);
       renderCalendar();
     }
     function changeView(view) { currentView = view; renderCalendar(); }
     function applyFilter(cat) { selectedFilter = cat; renderCalendar(); }
 
-    // PIN Authentication
     function handleAuthClick() {
       if (isRajapriyanUnlocked) {
-        // Lock session
         isRajapriyanUnlocked = false;
-        updateAuthDisplay();
+        document.getElementById('authBtn').classList.remove('unlocked');
         renderCalendar();
       } else {
         document.getElementById('pinInput').value = "";
@@ -337,37 +341,24 @@
         document.getElementById('pinInput').focus();
       }
     }
+
     function verifyPin() {
-      const entered = document.getElementById('pinInput').value.trim();
-      if (entered === RAJ_PIN) {
+      if (document.getElementById('pinInput').value.trim() === RAJ_PIN) {
         isRajapriyanUnlocked = true;
         closePinModal();
-        updateAuthDisplay();
+        document.getElementById('authBtn').classList.add('unlocked');
         renderCalendar();
       } else {
         alert("Incorrect PIN.");
       }
     }
     function closePinModal() { document.getElementById('pinModal').classList.remove('open'); }
-    function updateAuthDisplay() {
-      const btn = document.getElementById('authBtn');
-      const label = document.getElementById('authLabel');
-      if (isRajapriyanUnlocked) {
-        btn.classList.add('unlocked');
-        label.textContent = "Rajapriyan (Unlocked)";
-      } else {
-        btn.classList.remove('unlocked');
-        label.textContent = "Rajapriyan PIN";
-      }
-    }
 
-    // Rendering Engine
     function renderCalendar() {
       const container = document.getElementById('calendarContainer');
       container.innerHTML = "";
       updatePeriodLabel();
 
-      // Privacy Filter Rule: Private events stay invisible unless Rajapriyan is unlocked
       const visibleEvents = appData.events.filter(e => {
         if (e.isPrivate && !isRajapriyanUnlocked) return false;
         if (selectedFilter !== "ALL" && e.category !== selectedFilter) return false;
@@ -381,9 +372,8 @@
 
     function updatePeriodLabel() {
       const lbl = document.getElementById('currentPeriodLabel');
-      const opts = { month: 'long', year: 'numeric' };
       if (currentView === 'month' || currentView === 'agenda') {
-        lbl.textContent = currentDate.toLocaleDateString(undefined, opts);
+        lbl.textContent = currentDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
       } else if (currentView === 'week') {
         const start = getStartOfWeek(new Date(currentDate));
         const end = new Date(start);
@@ -392,12 +382,12 @@
       }
     }
 
-    // Month Layout
     function renderMonthView(container, events) {
       const header = document.createElement('div');
       header.className = 'weekday-header';
-      ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(d => {
-        header.innerHTML += `<div>${d}</div>`;
+      ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach((d, idx) => {
+        const isWeekend = (idx === 0 || idx === 6);
+        header.innerHTML += `<div class="${isWeekend ? 'weekend-col' : ''}">${d}</div>`;
       });
       container.appendChild(header);
 
@@ -406,37 +396,44 @@
 
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth();
-      const firstDay = new Date(year, month, 1).getDay();
+      const firstDayCol = new Date(year, month, 1).getDay();
       const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-      // Previous month filler
-      const prevMonthDays = new Date(year, month, 0).getDate();
-      for (let i = firstDay - 1; i >= 0; i--) {
-        grid.appendChild(createDayCell(prevMonthDays - i, true));
+      // Days of previous month
+      const prevMonthLastDay = new Date(year, month, 0).getDate();
+      for (let i = firstDayCol - 1; i >= 0; i--) {
+        const d = prevMonthLastDay - i;
+        const colIdx = (firstDayCol - 1 - i) % 7;
+        const isWeekend = (colIdx === 0 || colIdx === 6);
+        grid.appendChild(createDayCell(d, true, false, [], isWeekend));
       }
 
-      // Current month days
+      // Days of current month
       const today = new Date();
       for (let d = 1; d <= daysInMonth; d++) {
+        const colIdx = (firstDayCol + d - 1) % 7;
+        const isWeekend = (colIdx === 0 || colIdx === 6);
         const isToday = (today.getFullYear() === year && today.getMonth() === month && today.getDate() === d);
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         const dayEvents = events.filter(e => e.date === dateStr);
-        grid.appendChild(createDayCell(d, false, isToday, dayEvents));
+        grid.appendChild(createDayCell(d, false, isToday, dayEvents, isWeekend));
       }
 
-      // Next month filler
-      const totalCells = firstDay + daysInMonth;
+      // Days of next month
+      const totalCells = firstDayCol + daysInMonth;
       const nextDays = (totalCells > 35) ? 42 - totalCells : 35 - totalCells;
       for (let i = 1; i <= nextDays; i++) {
-        grid.appendChild(createDayCell(i, true));
+        const colIdx = (totalCells + i - 1) % 7;
+        const isWeekend = (colIdx === 0 || colIdx === 6);
+        grid.appendChild(createDayCell(i, true, false, [], isWeekend));
       }
 
       container.appendChild(grid);
     }
 
-    function createDayCell(dayNum, isOtherMonth, isToday = false, dayEvents = []) {
+    function createDayCell(dayNum, isOtherMonth, isToday, dayEvents, isWeekend) {
       const cell = document.createElement('div');
-      cell.className = `day-cell ${isOtherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''}`;
+      cell.className = `day-cell ${isWeekend ? 'weekend' : ''} ${isOtherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''}`;
       cell.innerHTML = `<div class="day-number">${dayNum}</div>`;
       
       dayEvents.forEach(evt => {
@@ -450,7 +447,6 @@
       return cell;
     }
 
-    // Week Layout
     function getStartOfWeek(d) {
       const date = new Date(d);
       const day = date.getDay();
@@ -466,13 +462,14 @@
       for (let i = 0; i < 7; i++) {
         const cur = new Date(start);
         cur.setDate(start.getDate() + i);
+        const isWeekend = (i === 0 || i === 6);
         const dateStr = cur.toISOString().split('T')[0];
         const dayEvents = events.filter(e => e.date === dateStr);
 
         const col = document.createElement('div');
-        col.className = 'week-column';
+        col.className = `week-column ${isWeekend ? 'weekend' : ''}`;
         col.innerHTML = `
-          <div class="week-header">
+          <div class="week-header ${isWeekend ? 'weekend' : ''}">
             ${cur.toLocaleDateString(undefined, { weekday: 'short' })} ${cur.getDate()}
           </div>
           <div class="week-events"></div>
@@ -491,14 +488,13 @@
       container.appendChild(weekWrap);
     }
 
-    // Agenda Layout
     function renderAgendaView(container, events) {
       const wrap = document.createElement('div');
       wrap.className = 'agenda-view';
 
       const sorted = [...events].sort((a,b) => new Date(a.date + ' ' + (a.time||'00:00')) - new Date(b.date + ' ' + (b.time||'00:00')));
       if (sorted.length === 0) {
-        wrap.innerHTML = `<div style="text-align:center; color:var(--text-muted); margin-top:3rem;">No events scheduled</div>`;
+        wrap.innerHTML = `<div style="text-align:center; color:var(--text-muted); margin-top:2rem;">No scheduled events</div>`;
         container.appendChild(wrap);
         return;
       }
@@ -520,10 +516,10 @@
         item.className = 'agenda-item';
         item.innerHTML = `
           <div style="display:flex; align-items:center; gap:0.75rem;">
-            <div style="width:12px; height:12px; border-radius:3px; background:${evt.color};"></div>
+            <div style="width:10px; height:10px; border-radius:2px; background:${evt.color};"></div>
             <div>
-              <strong>${evt.title}</strong> ${evt.isPrivate ? '<span style="color:#d97706; font-size:0.75rem; font-weight:600;">🔒 Private</span>' : ''}
-              <div style="font-size:0.75rem; color:var(--text-muted);">${evt.category ? '[' + evt.category + ']' : ''}</div>
+              <strong>${evt.title}</strong> ${evt.isPrivate ? '<span style="color:#d97706; font-size:0.75rem; font-weight:700;">🔒 Private</span>' : ''}
+              <span style="font-size:0.75rem; color:var(--text-muted); margin-left: 0.3rem;">${evt.category ? '[' + evt.category + ']' : ''}</span>
             </div>
           </div>
           <div style="font-size:0.85rem; font-weight:500;">${evt.time || 'All Day'}</div>
@@ -535,7 +531,6 @@
       container.appendChild(wrap);
     }
 
-    // Modals & Event Actions
     function openEventModal() {
       document.getElementById('eventId').value = "";
       document.getElementById('eventTitle').value = "";
@@ -546,8 +541,6 @@
       document.getElementById('eventPrivate').checked = false;
       document.getElementById('deleteEventBtn').style.display = 'none';
       document.getElementById('eventModalTitle').textContent = "Create Event";
-
-      // Show private toggle only if Rajapriyan access is unlocked
       document.getElementById('privateToggleContainer').style.display = isRajapriyanUnlocked ? 'flex' : 'none';
       document.getElementById('eventModal').classList.add('open');
     }
@@ -565,7 +558,6 @@
       document.getElementById('eventPrivate').checked = !!evt.isPrivate;
       document.getElementById('deleteEventBtn').style.display = 'block';
       document.getElementById('eventModalTitle').textContent = "Edit Event";
-
       document.getElementById('privateToggleContainer').style.display = isRajapriyanUnlocked ? 'flex' : 'none';
       document.getElementById('eventModal').classList.add('open');
     }
@@ -613,33 +605,14 @@
       filterSelect.value = selectedFilter;
     }
 
-    // Self-Saving File Engine
-    function saveAndDownloadSelf() {
-      // 1. Lock auth before export to keep private items safe in downloaded state
-      const wasUnlocked = isRajapriyanUnlocked;
-      isRajapriyanUnlocked = false;
-      updateAuthDisplay();
-      renderCalendar();
-
-      // 2. Serialize current event state into data script tag
-      document.getElementById('calendar-data').textContent = JSON.stringify(appData, null, 2);
-
-      // 3. Serialize DOM into full valid HTML document
-      const htmlPayload = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
-
-      // 4. Create and trigger file download
-      const blob = new Blob([htmlPayload], { type: 'text/html' });
+    // 2. Pure Data Persistence: Downloads data.js
+    function saveAndDownloadData() {
+      const fileContent = "window.calendarData = " + JSON.stringify(appData, null, 2) + ";\n";
+      const blob = new Blob([fileContent], { type: 'text/javascript' });
       const downloadLink = document.createElement('a');
       downloadLink.href = URL.createObjectURL(blob);
-      downloadLink.download = 'team_calendar.html';
+      downloadLink.download = 'data.js';
       downloadLink.click();
-
-      // Restore session state for the active tab
-      if (wasUnlocked) {
-        isRajapriyanUnlocked = true;
-        updateAuthDisplay();
-        renderCalendar();
-      }
     }
   </script>
 </body>
