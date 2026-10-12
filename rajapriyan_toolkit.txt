@@ -1,26 +1,7 @@
-import ctypes
-import gc
-import sys
+import os
+import psutil
 
-# 1. Clear IPython's hidden output history cache
-try:
-    ipython = get_ipython()
-    ipython.run_line_magic("reset_selective", "-f ^_")
-    if hasattr(ipython.kernel, "shell"):
-        ipython.kernel.shell.user_ns.get("Out", {}).clear()
-except Exception:
-    pass
-
-# 2. Delete the base table if you already created ads_cod_work from it
-if "ads_final_merge_base" in globals():
-    del ads_final_merge_base
-
-# 3. Force Python garbage collection
-gc.collect()
-
-# 4. Force the Linux C allocator to release unmapped pages back to the OS
-try:
-    ctypes.CDLL("libc.so.6").malloc_trim(0)
-    print("Memory successfully trimmed.")
-except Exception as e:
-    print(f"Could not run malloc_trim: {e}")
+def check_ram(label=""):
+    process = psutil.Process(os.getpid())
+    gb = process.memory_info().rss / (1024 ** 3)
+    print(f"[{label}] Current RAM in use: {gb:.2f} GB")
