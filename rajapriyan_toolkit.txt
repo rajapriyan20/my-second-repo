@@ -1,14 +1,10 @@
-import gc
-import ctypes
+from IPython.display import Javascript, display
 
-# 1. Delete the variable reference
-del df  # Replace 'df' with your DataFrame variable name
-
-# 2. Force Python garbage collection
-gc.collect()
-
-# 3. Force the OS allocator (Linux) to release freed heap memory
-try:
-    ctypes.CDLL("libc.so.6").malloc_trim(0)
-except Exception:
-    pass
+# Triggers a clean frontend restart in both classic Jupyter and JupyterLab/Mosaic
+display(Javascript("""
+if (window.jupyterapp) {
+    window.jupyterapp.commands.execute('kernelmenu:restart');
+} else if (window.Jupyter && Jupyter.notebook) {
+    Jupyter.notebook.kernel.restart();
+}
+"""))
